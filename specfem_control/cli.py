@@ -68,11 +68,19 @@ def office_submit_solver(parser, args, params):
                         metavar='', required=True)
     parser.add_argument('-lj', type=int, help='Last event to submit.',
                         metavar='', required=True)
+    parser.add_argument('--run_type', type=str, 
+                        help='Specify either adjoint_run or forward_run.',
+                        metavar='', required=True)
     local_args = parser.parse_known_args(args)
     first_job = local_args[0].fj
     last_job = local_args[0].lj
+    run_type = local_args[0].run_type
 
-    control.submit_solver(params, first_job, last_job)
+    if run_type != 'adjoint_run' and run_type != 'forward_run':
+        raise ParameterError("Must specifiy either forward_run or "
+            "adjoint_run")
+
+    control.submit_solver(params, first_job, last_job, run_type)
 
 
 def _read_parameter_file():

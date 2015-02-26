@@ -44,7 +44,59 @@ def _copy_input_files(event, forward_run_dir, lasif_path, iteration_name,
                         'STF'])
                 utils.copy_directory(source, compile_data,
                                      exc=['Par_file, STF'])
+                                     
+def _change_job_and_par_file(params, run_type):
+    """
+    Runs and changes the simulation_type and simulation time in the submission
+    files.
+    """
+    forward_run_dir = params['forward_run_dir']
+    forward_stage_dir = params['forward_stage_dir']
+    event_list = params['event_list']
+    if run_type == 'adjoint_run':
+        simulation_type = '= 3'
+        save_forward = '= .false.\n'
+        sbatch_time = '#SBATCH --time=01:00:00\n'
+    elif run_type == 'forward_run':
+        simulation_type = '= 1'
+        save_forward = '= .true.\n'
+        sbatch_time = '#SBATCH --time=00:30:00\n'
+        
+    utils.print_ylw("Modifying Par_files for run type...")
+    os.chdir(forward_run_dir)
+    for dir in os.listdir('./'):
+        if dir not in event_list:
+            continue
+        par_path = os.path.join(dir, 'DATA', 'Par_file')            
+        par_path_new = os.path.join(dir, 'DATA', 'Par_file_new')
+        new_file = open(par_path_new, 'w')
+        with open(par_path, 'r') as file:
+            for line in file:
+                fields = line.split('=')
+                if 'SIMULATION_TYPE' in fields[0]:
+                    new_file.write(fields[0] + simulation_type + fields[1][2:])
+                elif 'SAVE_FORWARD' in fields[0]:
+                    new_file.write(fields[0] + save_forward)
+                else:
+                    new_file.write(line)
+        os.rename(par_path_new, par_path)
+        
+    utils.print_ylw("Modifying .sbatch file for run type...")
+    os.chdir(forward_stage_dir)
+    job_array = os.path.join('./', 'jobArray_solver_daint.sbatch')
+    new_job_array_name = os.path.join('./','jobArray_solver_daint.sbatch_new')
+    new_job_array = open(new_job_array_name, 'w')
+    with open(job_array, 'r') as file:
+        for line in file:
+            if '--time' in line:
+                new_job_array.write(sbatch_time)
+            else:
+                new_job_array.write(line)
 
+    new_job_array.close()
+    os.remove(job_array)
+    os.rename(new_job_array_name, job_array)
+            
 
 def setup_solver(params):
     """
@@ -161,6 +213,8 @@ def submit_solver(params, first_job, last_job, run_type):
     """
     Submits the jobarray script for jobs first_job to last_job.
     """
+    _change_job_and_par_file(params, run_type)
+    
     forward_stage_dir = params['forward_stage_dir']
     iteration_name = params['iteration_name']
     job_array = 'jobArray_solver_daint.sbatch'
