@@ -47,6 +47,9 @@ def office_prepare_solver(parser, args, params):
     """
     pass
     
+    parser.parse_known_args(args)
+    control.prepare_solver(params)
+    
 
 def office_submit_mesher(parser, args, params):
     """
@@ -54,12 +57,21 @@ def office_submit_mesher(parser, args, params):
     """
     pass
 
-
 def office_submit_solver(parser, args, params):
     """
     Submits solver jobs -fj to -lj.
     """
     pass
+    
+    parser.add_argument('-fj', type=int, help='First event to submit.', 
+                        metavar='', required=True)
+    parser.add_argument('-lj', type=int, help='Last event to submit.', 
+                        metavar='', required=True)
+    local_args = parser.parse_known_args(args)
+    first_job = local_args[0].fj
+    last_job = local_args[0].lj
+
+    control.submit_solver(params, first_job, last_job)
 
 
 def _read_parameter_file():
