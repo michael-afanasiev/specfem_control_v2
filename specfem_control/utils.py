@@ -4,6 +4,7 @@ import os
 import errno
 import shutil
 
+
 class colours:
     ylw = '\033[93m'
     blu = '\033[94m'
@@ -29,7 +30,8 @@ def mkdir_p(path):
             pass
         else:
             raise
-            
+
+
 def safe_copy(source, dest):
     """
     Sets up a file copy that won't fail for a stupid reason.
@@ -49,6 +51,7 @@ def safe_copy(source, dest):
     except OSError as exception:
         if exception.errno != errno.EEXIST:
             raise
+
 
 def safe_sym_link(source, dest):
     """
@@ -70,13 +73,14 @@ def safe_sym_link(source, dest):
         if exception.errno != errno.EEXIST:
             raise
 
+
 def sym_link_directory(source, dest):
     """
     Recursively symlinks all files in a 'source' directory.
     """
     for file in os.listdir(source):
         safe_sym_link(os.path.join(source, file), os.path.join(dest, file))
-        
+
 
 def copy_directory(source, dest, exc=None, only=None):
     """
