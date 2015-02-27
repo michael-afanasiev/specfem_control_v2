@@ -32,7 +32,7 @@ def _copy_input_files(event, forward_run_dir, lasif_path, iteration_name,
     event_data = os.path.join(forward_run_dir, event, 'DATA')
     lasif_output = os.path.join(lasif_path, 'OUTPUT')
     for dir in os.listdir(lasif_output):
-        if iteration_name in dir and event in dir:
+        if iteration_name in dir and event in dir and 'input_files' in dir:
             source = os.path.join(lasif_output, dir)
             utils.copy_directory(source, event_data, exc=['Par_file', 'STF'])
             # This flag also copies the first event's data to the solver base
@@ -123,6 +123,7 @@ def setup_solver(params):
     utils.mkdir_p(os.path.join(optimization_base, 'PROCESSED_KERNELS'))
     utils.mkdir_p(os.path.join(optimization_base, 'GRADIENT_INFO'))
     utils.mkdir_p(os.path.join(optimization_base, 'LOGS'))
+    utils.mkdir_p(os.path.join(optimization_base, 'DATA'))
 
     # Create the forward modelling directories. Also copy relevant parameter
     # files from the LASIF project. _copy_input_files also copies the input
@@ -154,6 +155,7 @@ def setup_solver(params):
     utils.print_ylw('Copying compiled binaries...')
     bin_directory = os.path.join('./bin')
     opt_bin_directory = os.path.join(optimization_base, 'bin')
+    opt_dat_directory = os.path.join(optimization_base, 'DATA')
     utils.copy_directory(bin_directory, opt_bin_directory)
     for event in os.listdir(forward_run_dir):
         event_bin = os.path.join(forward_run_dir, event, 'bin')
@@ -162,6 +164,10 @@ def setup_solver(params):
         utils.safe_copy(compile_par, event_dat)
         utils.copy_directory(bin_directory, event_bin,
                              only=['xspecfem3D', 'xmeshfem3D'])
+    # Also copy to the optimization directory.
+    utils.copy_directory(bin_directory, opt_bin_directory)
+    compile_par = os.path.join(specfem_root, 'DATA', 'Par_file')
+    utils.safe_copy(compile_par, opt_dat_directory)
 
     # Copy jobarray script to base directory.
     utils.print_ylw('Copying jobarray sbatch script...')
@@ -288,3 +294,64 @@ def distribute_adjoint_sources(params):
                     sta_adj.write(line)
                     
     utils.print_blu('Done.')
+    
+def sum_kernels(params, first_job, last_job):
+    """
+    Goes through the output solver directory, and runs the summing
+    commands on the kernels that were output. Kernels will end up in the 
+    optimization/processed kernels directory.
+    """
+    forward_run_dir = params['forward_run_dir']
+    event_list = params['event_list']
+    optimization_dir = os.path.join(forward_run_dir, 'OPTIMIZATION')
+    gradient_info_dir = os.path.join(optimization_dir, 'GRADIENT_INFO')
+    file_name = os.path.join(gradient_info_dir, 'kernels_list.txt')
+    
+    # First, make sure that kernels exist in the directories.
+    event_kernels = []
+    for event in os.listdir(forward_run_dir):        
+        if event not in event_list[first_job:last_job+1]:
+            continue        
+        databases_mpi = os.path.join(forward_run_dir, event, 'DATABASES_MPI')
+        if any('_kernel.bin' in s for s in os.listdir(databases_mpi)):
+            event_kernels.append(event)
+        else:
+            utils.print_red("Kernel not found for event: " + event) 
+                       
+    # Write the existing kernels_list file.
+    with open(file_name, 'w') as outfile:
+        for event in event_kernels:
+            full_path = os.path.join(forward_run_dir, event, 'DATABASES_MPI')
+            outfile.write(full_path + '\n')
+                
+    # Get path of this script and .sbatch file.
+    this_script = os.path.dirname(os.path.realpath(__file__))
+    sbatch_file = os.path.join(this_script, 'sbatch_scripts', 
+        'job_sum_kernels.sbatch')
+        
+    # Change to the directory above this script, and submit the job.
+    os.chdir(this_script)
+    subprocess.Popen(['sbatch', sbatch_file, optimization_dir]).wait()
+    
+def smooth_kernels(params, horizontal_smoothing, vertical_smoothing):
+    """
+    Smoothes the summed kernels (requires that sum_kernels has already been
+    run.
+    """
+    optimization_dir = os.path.join(params['forward_run_dir'], 'OPTIMIZATION')
+    kernel_names = ['bulk_c_kernel', 'bulk_betah_kernel', 'bulk_betav_kernel',
+                    'eta_kernel']
+    kernel_dir = './PROCESSED_KERNELS'
+    databases_mpi = '../mesh/DATABASES_MPI'
+    
+    # Get path of this script and .sbatch file.
+    this_script = os.path.dirname(os.path.realpath(__file__))
+    sbatch_file = os.path.join(this_script, 'sbatch_scripts', 
+    'job_smooth_kernels.sbatch')
+        
+    # Change to the directory above this script, and submit the job.
+    os.chdir(this_script)
+    for kernel_name in kernel_names:
+        subprocess.Popen(
+            ['sbatch', sbatch_file, horizontal_smoothing, vertical_smoothing,
+             kernel_name, kernel_dir, databases_mpi, optimization_dir]).wait()

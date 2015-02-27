@@ -102,6 +102,40 @@ def office_distribute_adjoint_sources(parser, args, params):
     """
     parser.parse_known_args(args)
     control.distribute_adjoint_sources(params)
+    
+def office_sum_kernels(parser, args, params):
+    """
+    Goes through the output solver directory, and runs the summing and smoothing
+    commands on the kernels that were output. Kernels will end up in the 
+    optimization/processed kernels directory.
+    """
+    parser.add_argument('-fj', type=int, help='First event to submit.',
+                        metavar='', required=True)
+    parser.add_argument('-lj', type=int, help='Last event to submit.',
+                        metavar='', required=True)
+                        
+    local_args = parser.parse_known_args(args)
+    first_job = local_args[0].fj
+    last_job = local_args[0].lj
+    
+    control.sum_kernels(params, first_job, last_job)
+    
+def office_smooth_kernels(parser, args, params):
+    """
+    Smoothes the summed kernels (requires that sum_kernels has already been
+    run.
+    """
+    parser.add_argument('-h_length', type=str, 
+                        help='Variance of Gaussian [horizontal] (default=25)', 
+                        metavar='', default='25')
+    parser.add_argument('-v_length', type=str, 
+                        help='Variance of Gaussian [vertical] (default=5)', 
+                        metavar='', default='5')
+    local_args = parser.parse_known_args(args)
+    h_length = local_args[0].h_length
+    v_length = local_args[0].v_length
+    
+    control.smooth_kernels(params, h_length, v_length)
 
 def _read_parameter_file():
     """

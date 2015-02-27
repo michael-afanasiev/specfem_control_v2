@@ -6,6 +6,7 @@ import shutil
 
 
 class colours:
+    red = '\033[91m'
     ylw = '\033[93m'
     blu = '\033[94m'
     rst = '\033[0m'
@@ -17,6 +18,10 @@ def print_blu(message):
 
 def print_ylw(message):
     print colours.ylw + message + colours.rst
+    
+def print_red(message):
+    print colours.red + message + colours.rst
+    
 
 
 def mkdir_p(path):
