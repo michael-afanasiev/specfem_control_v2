@@ -53,4 +53,7 @@ docs/_build/
 # PyBuilder
 target/
 
+# Custom
+*.o
+*.e
 config.txt

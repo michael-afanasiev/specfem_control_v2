@@ -35,9 +35,6 @@ def mkdir_p(path):
 def safe_copy(source, dest):
     """
     Sets up a file copy that won't fail for a stupid reason.
-
-    :source: Source file.
-    :dest: Destination directory.
     """
     source = os.path.join(source)
     dest = os.path.join(dest)
@@ -52,13 +49,26 @@ def safe_copy(source, dest):
         if exception.errno != errno.EEXIST:
             raise
 
+def safe_copy_file(source, dest):
+    """
+    Sets up a file copy that won't fail for a stupid reason.
+    """
+    source = os.path.join(source)
+    dest = os.path.join(dest)
+
+    if (os.path.isdir(source)):
+        return
+    if (os.path.isdir(dest)):
+        return
+    try:
+        shutil.copyfile(source, dest)
+    except OSError as exception:
+        if exception.errno != errno.EEXIST:
+            raise
 
 def safe_sym_link(source, dest):
     """
     Sets up symbolic links that won't fail for a stupid reason.
-
-    :source: Source file.
-    :dest: Destination file.
     """
 
     source = os.path.join(source)

@@ -2,6 +2,7 @@
 
 import os
 import utils
+import shutil
 import subprocess
 
 
@@ -17,6 +18,7 @@ def _setup_dir_tree(event, forward_run_dir):
     utils.mkdir_p(event_path + '/DATA/cemRequest')
     utils.mkdir_p(event_path + '/OUTPUT_FILES')
     utils.mkdir_p(event_path + '/DATABASES_MPI')
+    utils.mkdir_p(event_path + '/SEM')
 
 
 def _copy_input_files(event, forward_run_dir, lasif_path, iteration_name,
@@ -56,7 +58,7 @@ def _change_job_and_par_file(params, run_type):
     if run_type == 'adjoint_run':
         simulation_type = '= 3'
         save_forward = '= .false.\n'
-        sbatch_time = '#SBATCH --time=01:00:00\n'
+        sbatch_time = '#SBATCH --time=01:30:00\n'
     elif run_type == 'forward_run':
         simulation_type = '= 1'
         save_forward = '= .true.\n'
@@ -221,3 +223,68 @@ def submit_solver(params, first_job, last_job, run_type):
     os.chdir(forward_stage_dir)
     subprocess.Popen(['sbatch', '--array=%s-%s' % (first_job, last_job),
                       job_array, iteration_name]).wait()
+                      
+def submit_window_selection(params, first_job, last_job):
+    """
+    Submits the window selection job for jobs first_job to last_job.
+    """
+    lasif_project_dir = params['lasif_path']
+    scratch_path = params['scratch_path']
+    iteration_name = params['iteration_name']
+    lasif_project_name = os.path.basename(lasif_project_dir)
+    lasif_scratch_dir = os.path.join(scratch_path, lasif_project_name)
+    
+    # Get path of this script and .sbatch file.
+    this_script = os.path.dirname(os.path.realpath(__file__))
+    sbatch_file = os.path.join(this_script, 'sbatch_scripts', 
+        'select_windows_parallel.sbatch')
+    
+    # Change to the directory above this script, and submit the job.
+    os.chdir(this_script)
+    subprocess.Popen(['sbatch', '--array=%s-%s' % (first_job, last_job), 
+        sbatch_file, lasif_scratch_dir, 
+            lasif_project_dir, iteration_name]).wait()
+            
+def distribute_adjoint_sources(params):
+    """
+    Searches through the OUTPUT directory of the lasif project, and distributes
+    the adjoint sources to their appropriate simulated directories. Also writes
+    the STATIONS_ADJOINT file.
+    """
+    lasif_output_dir = os.path.join(params['lasif_path'], 'OUTPUT')
+    forward_run_dir = params['forward_run_dir']
+    for dir in sorted(os.listdir(lasif_output_dir)):
+        
+        if 'adjoint' not in dir:
+            continue
+            
+        adjoint_source_dir = os.path.join(lasif_output_dir, dir)            
+        event_name = adjoint_source_dir[adjoint_source_dir.find('GCMT'):]
+        solver_data_dir = os.path.join(forward_run_dir, event_name, 'DATA')
+        solver_sem_dir = os.path.join(forward_run_dir, event_name, 'SEM')
+        adjoint_stations = os.listdir(adjoint_source_dir)    
+        
+        utils.print_ylw("Copying adjoint sources for " + event_name + "...")        
+        utils.mkdir_p(solver_sem_dir)        
+        # This is necessary because the adjoint source names expected by 
+        # specfem3d_globe are opposite of what lasif puts out. Could just fix
+        # this in lasif instead. This line would then reduce to a
+        # 'copy_directory'.
+        for old_name in os.listdir(adjoint_source_dir):
+            fields = old_name.split('.')
+            new_name = fields[1] + '.' + fields[0] + '.' + fields[2] + '.' + \
+                fields[3]
+            utils.safe_copy_file(os.path.join(adjoint_source_dir, old_name), 
+                                 os.path.join(solver_sem_dir, new_name))
+        
+        adjoint_stations = sorted(list(set([fields.split('.')[0] 
+                            + '.' + fields.split('.')[1] 
+                            for fields in adjoint_stations])))
+        with open(os.path.join(solver_data_dir, 'STATIONS_ADJOINT'), 'w') \
+            as sta_adj:
+            sta = open(os.path.join(solver_data_dir, 'STATIONS'), 'r')
+            for line in sta:
+                if line.split()[0] + '.' + line.split()[1] in adjoint_stations:
+                    sta_adj.write(line)
+                    
+    utils.print_blu('Done.')
