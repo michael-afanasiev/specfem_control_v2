@@ -63,10 +63,10 @@ def office_submit_solver(parser, args, params):
                         metavar='', required=True)
     parser.add_argument('-lj', type=int, help='Last event to submit.',
                         metavar='', required=True)
-    parser.add_argument('--run_type', type=str, 
+    parser.add_argument('--run_type', type=str,
                         help='Specify either adjoint_run or forward_run.',
                         metavar='', required=True)
-                        
+
     local_args = parser.parse_known_args(args)
     first_job = local_args[0].fj
     last_job = local_args[0].lj
@@ -74,10 +74,11 @@ def office_submit_solver(parser, args, params):
 
     if run_type != 'adjoint_run' and run_type != 'forward_run':
         raise ParameterError("Must specifiy either forward_run or "
-            "adjoint_run")
+                             "adjoint_run")
 
     control.submit_solver(params, first_job, last_job, run_type)
-    
+
+
 def office_submit_window_selection(parser, args, params):
     """
     Submits the .sbatch script to select the windows and create the adjoint
@@ -87,12 +88,13 @@ def office_submit_window_selection(parser, args, params):
                         metavar='', required=True)
     parser.add_argument('-lj', type=int, help='Last event to submit.',
                         metavar='', required=True)
-                        
+
     local_args = parser.parse_known_args(args)
     first_job = local_args[0].fj
     last_job = local_args[0].lj
-    
-    control.submit_window_selection(params, first_job, last_job)    
+
+    control.submit_window_selection(params, first_job, last_job)
+
 
 def office_distribute_adjoint_sources(parser, args, params):
     """
@@ -102,40 +104,43 @@ def office_distribute_adjoint_sources(parser, args, params):
     """
     parser.parse_known_args(args)
     control.distribute_adjoint_sources(params)
-    
+
+
 def office_sum_kernels(parser, args, params):
     """
-    Goes through the output solver directory, and runs the summing and smoothing
-    commands on the kernels that were output. Kernels will end up in the 
-    optimization/processed kernels directory.
+    Goes through the output solver directory, and runs the summing and
+    smoothing commands on the kernels that were output. Kernels will
+    end up in the optimization/processed kernels directory.
     """
     parser.add_argument('-fj', type=int, help='First event to submit.',
                         metavar='', required=True)
     parser.add_argument('-lj', type=int, help='Last event to submit.',
                         metavar='', required=True)
-                        
+
     local_args = parser.parse_known_args(args)
     first_job = local_args[0].fj
     last_job = local_args[0].lj
-    
+
     control.sum_kernels(params, first_job, last_job)
-    
+
+
 def office_smooth_kernels(parser, args, params):
     """
     Smoothes the summed kernels (requires that sum_kernels has already been
     run.
     """
-    parser.add_argument('-h_length', type=str, 
-                        help='Variance of Gaussian [horizontal] (default=25)', 
+    parser.add_argument('-h_length', type=str,
+                        help='Variance of Gaussian [horizontal] (default=25)',
                         metavar='', default='25')
-    parser.add_argument('-v_length', type=str, 
-                        help='Variance of Gaussian [vertical] (default=5)', 
+    parser.add_argument('-v_length', type=str,
+                        help='Variance of Gaussian [vertical] (default=5)',
                         metavar='', default='5')
     local_args = parser.parse_known_args(args)
     h_length = local_args[0].h_length
     v_length = local_args[0].v_length
-    
+
     control.smooth_kernels(params, h_length, v_length)
+
 
 def _read_parameter_file():
     """
