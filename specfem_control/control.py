@@ -2,6 +2,7 @@
 
 import os
 import utils
+import shutil
 import subprocess
 
 
@@ -45,8 +46,7 @@ def _copy_input_files(event, forward_run_dir, lasif_path, iteration_name,
                         'STF'])
                 utils.copy_directory(source, compile_data,
                                      exc=['Par_file, STF'])
-
-
+                                     
 def _change_job_and_par_file(params, run_type):
     """
     Runs and changes the simulation_type and simulation time in the submission
@@ -63,13 +63,13 @@ def _change_job_and_par_file(params, run_type):
         simulation_type = '= 1'
         save_forward = '= .true.\n'
         sbatch_time = '#SBATCH --time=00:30:00\n'
-
+        
     utils.print_ylw("Modifying Par_files for run type...")
     os.chdir(forward_run_dir)
     for dir in os.listdir('./'):
         if dir not in event_list:
             continue
-        par_path = os.path.join(dir, 'DATA', 'Par_file')
+        par_path = os.path.join(dir, 'DATA', 'Par_file')            
         par_path_new = os.path.join(dir, 'DATA', 'Par_file_new')
         new_file = open(par_path_new, 'w')
         with open(par_path, 'r') as file:
@@ -82,11 +82,11 @@ def _change_job_and_par_file(params, run_type):
                 else:
                     new_file.write(line)
         os.rename(par_path_new, par_path)
-
+        
     utils.print_ylw("Modifying .sbatch file for run type...")
     os.chdir(forward_stage_dir)
     job_array = os.path.join('./', 'jobArray_solver_daint.sbatch')
-    new_job_array_name = os.path.join('./', 'jobArray_solver_daint.sbatch_new')
+    new_job_array_name = os.path.join('./','jobArray_solver_daint.sbatch_new')
     new_job_array = open(new_job_array_name, 'w')
     with open(job_array, 'r') as file:
         for line in file:
@@ -98,7 +98,7 @@ def _change_job_and_par_file(params, run_type):
     new_job_array.close()
     os.remove(job_array)
     os.rename(new_job_array_name, job_array)
-
+            
 
 def setup_solver(params):
     """
@@ -222,15 +222,14 @@ def submit_solver(params, first_job, last_job, run_type):
     Submits the jobarray script for jobs first_job to last_job.
     """
     _change_job_and_par_file(params, run_type)
-
+    
     forward_stage_dir = params['forward_stage_dir']
     iteration_name = params['iteration_name']
     job_array = 'jobArray_solver_daint.sbatch'
     os.chdir(forward_stage_dir)
     subprocess.Popen(['sbatch', '--array=%s-%s' % (first_job, last_job),
                       job_array, iteration_name]).wait()
-
-
+                      
 def submit_window_selection(params, first_job, last_job):
     """
     Submits the window selection job for jobs first_job to last_job.
@@ -240,19 +239,18 @@ def submit_window_selection(params, first_job, last_job):
     iteration_name = params['iteration_name']
     lasif_project_name = os.path.basename(lasif_project_dir)
     lasif_scratch_dir = os.path.join(scratch_path, lasif_project_name)
-
+    
     # Get path of this script and .sbatch file.
     this_script = os.path.dirname(os.path.realpath(__file__))
-    sbatch_file = os.path.join(this_script, 'sbatch_scripts',
-                               'select_windows_parallel.sbatch')
-
+    sbatch_file = os.path.join(this_script, 'sbatch_scripts', 
+        'select_windows_parallel.sbatch')
+    
     # Change to the directory above this script, and submit the job.
     os.chdir(this_script)
-    subprocess.Popen(['sbatch', '--array=%s-%s' % (first_job, last_job),
-                      sbatch_file, lasif_scratch_dir,
-                      lasif_project_dir, iteration_name]).wait()
-
-
+    subprocess.Popen(['sbatch', '--array=%s-%s' % (first_job, last_job), 
+        sbatch_file, lasif_scratch_dir, 
+            lasif_project_dir, iteration_name]).wait()
+            
 def distribute_adjoint_sources(params):
     """
     Searches through the OUTPUT directory of the lasif project, and distributes
@@ -262,19 +260,19 @@ def distribute_adjoint_sources(params):
     lasif_output_dir = os.path.join(params['lasif_path'], 'OUTPUT')
     forward_run_dir = params['forward_run_dir']
     for dir in sorted(os.listdir(lasif_output_dir)):
-
+        
         if 'adjoint' not in dir:
             continue
-
-        adjoint_source_dir = os.path.join(lasif_output_dir, dir)
+            
+        adjoint_source_dir = os.path.join(lasif_output_dir, dir)            
         event_name = adjoint_source_dir[adjoint_source_dir.find('GCMT'):]
         solver_data_dir = os.path.join(forward_run_dir, event_name, 'DATA')
         solver_sem_dir = os.path.join(forward_run_dir, event_name, 'SEM')
-        adjoint_stations = os.listdir(adjoint_source_dir)
-
-        utils.print_ylw("Copying adjoint sources for " + event_name + "...")
-        utils.mkdir_p(solver_sem_dir)
-        # This is necessary because the adjoint source names expected by
+        adjoint_stations = os.listdir(adjoint_source_dir)    
+        
+        utils.print_ylw("Copying adjoint sources for " + event_name + "...")        
+        utils.mkdir_p(solver_sem_dir)        
+        # This is necessary because the adjoint source names expected by 
         # specfem3d_globe are opposite of what lasif puts out. Could just fix
         # this in lasif instead. This line would then reduce to a
         # 'copy_directory'.
@@ -282,26 +280,25 @@ def distribute_adjoint_sources(params):
             fields = old_name.split('.')
             new_name = fields[1] + '.' + fields[0] + '.' + fields[2] + '.' + \
                 fields[3]
-            utils.safe_copy_file(os.path.join(adjoint_source_dir, old_name),
+            utils.safe_copy_file(os.path.join(adjoint_source_dir, old_name), 
                                  os.path.join(solver_sem_dir, new_name))
-
-        adjoint_stations = sorted(list(set([fields_.split('.')[0] +
-                                            '.' + fields_.split('.')[1]
-                                            for fields_ in adjoint_stations])))
+        
+        adjoint_stations = sorted(list(set([fields.split('.')[0] 
+                            + '.' + fields.split('.')[1] 
+                            for fields in adjoint_stations])))
         with open(os.path.join(solver_data_dir, 'STATIONS_ADJOINT'), 'w') \
-                as sta_adj:
+            as sta_adj:
             sta = open(os.path.join(solver_data_dir, 'STATIONS'), 'r')
             for line in sta:
                 if line.split()[0] + '.' + line.split()[1] in adjoint_stations:
                     sta_adj.write(line)
-
+                    
     utils.print_blu('Done.')
-
-
+    
 def sum_kernels(params, first_job, last_job):
     """
     Goes through the output solver directory, and runs the summing
-    commands on the kernels that were output. Kernels will end up in the
+    commands on the kernels that were output. Kernels will end up in the 
     optimization/processed kernels directory.
     """
     forward_run_dir = params['forward_run_dir']
@@ -309,34 +306,33 @@ def sum_kernels(params, first_job, last_job):
     optimization_dir = os.path.join(forward_run_dir, 'OPTIMIZATION')
     gradient_info_dir = os.path.join(optimization_dir, 'GRADIENT_INFO')
     file_name = os.path.join(gradient_info_dir, 'kernels_list.txt')
-
+    
     # First, make sure that kernels exist in the directories.
     event_kernels = []
-    for event in os.listdir(forward_run_dir):
-        if event not in event_list[first_job:last_job + 1]:
-            continue
+    for event in os.listdir(forward_run_dir):        
+        if event not in event_list[first_job:last_job+1]:
+            continue        
         databases_mpi = os.path.join(forward_run_dir, event, 'DATABASES_MPI')
         if any('_kernel.bin' in s for s in os.listdir(databases_mpi)):
             event_kernels.append(event)
         else:
-            utils.print_red("Kernel not found for event: " + event)
-
+            utils.print_red("Kernel not found for event: " + event) 
+                       
     # Write the existing kernels_list file.
     with open(file_name, 'w') as outfile:
         for event in event_kernels:
             full_path = os.path.join(forward_run_dir, event, 'DATABASES_MPI')
             outfile.write(full_path + '\n')
-
+                
     # Get path of this script and .sbatch file.
     this_script = os.path.dirname(os.path.realpath(__file__))
-    sbatch_file = os.path.join(this_script, 'sbatch_scripts',
-                               'job_sum_kernels.sbatch')
-
+    sbatch_file = os.path.join(this_script, 'sbatch_scripts', 
+        'job_sum_kernels.sbatch')
+        
     # Change to the directory above this script, and submit the job.
     os.chdir(this_script)
     subprocess.Popen(['sbatch', sbatch_file, optimization_dir]).wait()
-
-
+    
 def smooth_kernels(params, horizontal_smoothing, vertical_smoothing):
     """
     Smoothes the summed kernels (requires that sum_kernels has already been
@@ -347,12 +343,12 @@ def smooth_kernels(params, horizontal_smoothing, vertical_smoothing):
                     'eta_kernel']
     kernel_dir = './PROCESSED_KERNELS'
     databases_mpi = '../mesh/DATABASES_MPI'
-
+    
     # Get path of this script and .sbatch file.
     this_script = os.path.dirname(os.path.realpath(__file__))
-    sbatch_file = os.path.join(this_script, 'sbatch_scripts',
-                               'job_smooth_kernels.sbatch')
-
+    sbatch_file = os.path.join(this_script, 'sbatch_scripts', 
+    'job_smooth_kernels.sbatch')
+        
     # Change to the directory above this script, and submit the job.
     os.chdir(this_script)
     for kernel_name in kernel_names:

@@ -6,7 +6,7 @@
 #SBATCH --ntasks=24
 #SBATCH --ntasks-per-node=8
 #SBATCH --cpus-per-task=1
-#SBATCH --time=06:00:00
+#SBATCH --time=12:00:00
 #SBATCH --output=./sbatch_logs/job_smooth.%A.o
 #SBATCH --error=./sbatch_logs/job_smooth.%A.e
 
