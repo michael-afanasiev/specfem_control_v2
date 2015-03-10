@@ -48,6 +48,7 @@ def office_prepare_solver(parser, args, params):
     control.prepare_solver(params)
 
 
+@command_group("Submit")
 def office_submit_mesher(parser, args, params):
     """
     Submits the mesher to the batch filesystem in the /mesh directory.
@@ -66,6 +67,7 @@ def office_submit_mesher(parser, args, params):
     control.submit_mesher(params, run_type)
     
 
+@command_group("Submit")
 def office_submit_solver(parser, args, params):
     """
     Submits solver jobs -fj to -lj.
@@ -90,6 +92,7 @@ def office_submit_solver(parser, args, params):
     control.submit_solver(params, first_job, last_job, run_type)
 
 
+@command_group("Submit")
 def office_submit_window_selection(parser, args, params):
     """
     Submits the .sbatch script to select the windows and create the adjoint
@@ -107,6 +110,7 @@ def office_submit_window_selection(parser, args, params):
     control.submit_window_selection(params, first_job, last_job)
 
 
+@command_group("Setup")
 def office_distribute_adjoint_sources(parser, args, params):
     """
     Searches through the OUTPUT directory of the lasif project, and distributes
@@ -117,6 +121,7 @@ def office_distribute_adjoint_sources(parser, args, params):
     control.distribute_adjoint_sources(params)
 
 
+@command_group("Submit")
 def office_sum_kernels(parser, args, params):
     """
     Goes through the output solver directory, and runs the summing and
@@ -135,6 +140,7 @@ def office_sum_kernels(parser, args, params):
     control.sum_kernels(params, first_job, last_job)
 
 
+@command_group("Submit")
 def office_smooth_kernels(parser, args, params):
     """
     Smoothes the summed kernels (requires that sum_kernels has already been
@@ -152,6 +158,8 @@ def office_smooth_kernels(parser, args, params):
 
     control.smooth_kernels(params, h_length, v_length)
     
+    
+@command_group("Submit")
 def office_add_smoothed_kernels(parser, args, params):
     """
     Adds the transversely isotropic kernels back to the original model, and 
@@ -165,6 +173,7 @@ def office_add_smoothed_kernels(parser, args, params):
     
     control.add_smoothed_kernels(params, max_perturbation)
     
+@command_group("Setup")
 def office_clean_attenuation_dumps(parser, args, params):
     """
     Goes through the simulation directories for an iteration, and cleans out
@@ -173,6 +182,7 @@ def office_clean_attenuation_dumps(parser, args, params):
     parser.parse_known_args(args)
     control.clean_attenuation_dumps(params)
     
+@command_group("Setup")
 def office_clean_event_kernels(parser, args, params):
     """
     Goes through the simulation directories for an iteration, and cleans out
@@ -181,6 +191,7 @@ def office_clean_event_kernels(parser, args, params):
     parser.parse_known_args(args)
     control.clean_event_kernels(params)
     
+@command_group("Setup")
 def office_setup_new_iteration(parser, args, params):
     """
     Sets up a new iteration, and links the mesh files from the old iteration to
@@ -198,6 +209,7 @@ def office_setup_new_iteration(parser, args, params):
     
     control.setup_new_iteration(params, old_iteration, new_iteration)
     
+@command_group("Setup")
 def office_clean_failed(parser, args, params):
     """
     Deletes error files after a failed run.
@@ -205,6 +217,7 @@ def office_clean_failed(parser, args, params):
     parser.parse_known_args(args)
     control.clean_failed(params)
 
+@command_group("Visualize")
 def office_generate_kernel_vtk(parser, args, params):
     """
     Generates .vtk files for the smoothed and summed kernels, and puts them
@@ -218,6 +231,7 @@ def office_generate_kernel_vtk(parser, args, params):
     
     control.generate_kernel_vtk(params, num_slices)
     
+@command_group("Setup")
 def office_delete_adjoint_sources_for_iteration(parser, args, params):
     """
     Deletes the directories on both /scratch and /project which contain the 
@@ -227,6 +241,7 @@ def office_delete_adjoint_sources_for_iteration(parser, args, params):
     parser.parse_known_args(args)
     control.delete_adjoint_sources_for_iteration(params)
     
+@command_group("Visualize")
 def office_plot_seismogram(parser, args, params):
     """
     Plots a single seismogram.
@@ -335,6 +350,26 @@ def _get_functions():
     return fcts
 
 
+def _print_help(fcts):
+    """
+    Prints the master help.
+    """
+    utils.print_ylw("\n\nWelcome to the oval office. There's no clever acronym "
+        "here, I was just reading the Hunt for the Red October while writing "
+        "this.\n\n")
+    fct_groups = {}
+    for fct_name, fct in fcts.iteritems():
+        group_name = fct.group_name if hasattr(fct, "group_name") else "Misc"
+        fct_groups.setdefault(group_name, {})
+        fct_groups[group_name][fct_name] = fct
+        
+    for group_name in sorted(fct_groups.iterkeys()):
+        utils.print_red(("{0:=>25s} Functions".format(" " + group_name)))
+        current_functions = fct_groups[group_name]
+        for name in sorted(current_functions.keys()):
+            utils.print_cyn(name)
+            utils.print_gry(_get_cmd_description(fcts[name]))
+
 def main():
     """
     Main driver program for oval office. Does all the delegations.
@@ -351,10 +386,7 @@ def main():
 
     # Print help.
     if not args or args == ["help"] or args == ["--help"]:
-        print "\n"
-        for fct_name in sorted(fcts):
-            utils.print_cyn(fct_name)
-            utils.print_gry(_get_cmd_description(fcts[fct_name]))
+        _print_help(fcts)
         sys.exit()
 
     # Use lowercase to increase tolerance.
