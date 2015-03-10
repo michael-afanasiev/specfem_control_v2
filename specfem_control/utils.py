@@ -9,19 +9,25 @@ class colours:
     red = '\033[91m'
     ylw = '\033[93m'
     blu = '\033[94m'
+    cyn = '\033[96m'
+    gry = '\033[37m'
     rst = '\033[0m'
 
 
 def print_blu(message):
     print colours.blu + message + colours.rst
 
-
 def print_ylw(message):
     print colours.ylw + message + colours.rst
-
-
+    
 def print_red(message):
     print colours.red + message + colours.rst
+    
+def print_gry(message):
+    print colours.gry + message + colours.rst
+    
+def print_cyn(message):
+    print colours.cyn + message + colours.rst
 
 
 def mkdir_p(path):
@@ -54,7 +60,6 @@ def safe_copy(source, dest):
         if exception.errno != errno.EEXIST:
             raise
 
-
 def safe_copy_file(source, dest):
     """
     Sets up a file copy that won't fail for a stupid reason.
@@ -71,7 +76,6 @@ def safe_copy_file(source, dest):
     except OSError as exception:
         if exception.errno != errno.EEXIST:
             raise
-
 
 def safe_sym_link(source, dest):
     """
@@ -99,11 +103,13 @@ def sym_link_directory(source, dest):
         safe_sym_link(os.path.join(source, file), os.path.join(dest, file))
 
 
-def copy_directory(source, dest, exc=None, only=None):
+def copy_directory(source, dest, exc=None, only=None, ends=None):
     """
     Recursively copies all files in a 'source' directory.
     """
     for file in os.listdir(source):
+        if ends and not file.endswith(ends):
+            continue
         if exc and file in exc:
             continue
         if only and file not in only:

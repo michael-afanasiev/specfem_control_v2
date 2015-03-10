@@ -52,8 +52,19 @@ def office_submit_mesher(parser, args, params):
     """
     Submits the mesher to the batch filesystem in the /mesh directory.
     """
-    pass
-
+    parser.add_argument('--run_type', type=str,
+                        help='Specify either first_iteration or update_mesh',
+                        metavar='', required=True)
+                        
+    local_args = parser.parse_known_args(args)
+    run_type = local_args[0].run_type
+    
+    if run_type != 'first_iteration' and run_type != 'update_mesh':
+        raise ParameterError("Must specifiy either first_iteration or "
+                             "update_mesh")
+                             
+    control.submit_mesher(params, run_type)
+    
 
 def office_submit_solver(parser, args, params):
     """
@@ -140,7 +151,93 @@ def office_smooth_kernels(parser, args, params):
     v_length = local_args[0].v_length
 
     control.smooth_kernels(params, h_length, v_length)
+    
+def office_add_smoothed_kernels(parser, args, params):
+    """
+    Adds the transversely isotropic kernels back to the original model, and 
+    puts the results in the ../mesh/DATA/GLL directory.
+    """
+    parser.add_argument('--max_perturbation', type=str,
+                         help='Amount by which to scale the velocity updates',
+                         metavar='', required=True)
+    local_args = parser.parse_known_args(args)
+    max_perturbation = local_args[0].max_perturbation
+    
+    control.add_smoothed_kernels(params, max_perturbation)
+    
+def office_clean_attenuation_dumps(parser, args, params):
+    """
+    Goes through the simulation directories for an iteration, and cleans out
+    the massive adios attenuation snapshot files.
+    """
+    parser.parse_known_args(args)
+    control.clean_attenuation_dumps(params)
+    
+def office_clean_event_kernels(parser, args, params):
+    """
+    Goes through the simulation directories for an iteration, and cleans out
+    the individual event kernels (make sure you've summed them already!).
+    """
+    parser.parse_known_args(args)
+    control.clean_event_kernels(params)
+    
+def office_setup_new_iteration(parser, args, params):
+    """
+    Sets up a new iteration, and links the mesh files from the old iteration to
+    the new one.
+    """
+    parser.add_argument('--old_iteration', type=str,
+                        help='Name of old iteration',
+                        metavar='', required=True)
+    parser.add_argument('--new_iteration', type=str,
+                        help='Name of new iteration',
+                        metavar='', required=True)
+    local_args = parser.parse_known_args(args)
+    old_iteration = local_args[0].old_iteration
+    new_iteration = local_args[0].new_iteration
+    
+    control.setup_new_iteration(params, old_iteration, new_iteration)
+    
+def office_clean_failed(parser, args, params):
+    """
+    Deletes error files after a failed run.
+    """
+    parser.parse_known_args(args)
+    control.clean_failed(params)
 
+def office_generate_kernel_vtk(parser, args, params):
+    """
+    Generates .vtk files for the smoothed and summed kernels, and puts them
+    in the OPTIMIZATION/VTK_FILES directory.
+    """
+    parser.add_argument('--num_slices', type=int,
+                        help='Number of slices (processors)',
+                        metavar='', required=True)
+    local_args = parser.parse_known_args(args)
+    num_slices = local_args[0].num_slices
+    
+    control.generate_kernel_vtk(params, num_slices)
+    
+def office_delete_adjoint_sources_for_iteration(parser, args, params):
+    """
+    Deletes the directories on both /scratch and /project which contain the 
+    adjoint sources for this iteration. As well, cleans the SEM and
+    STATIONS_ADJOINT files for the solver.
+    """
+    parser.parse_known_args(args)
+    control.delete_adjoint_sources_for_iteration(params)
+    
+def office_plot_seismogram(parser, args, params):
+    """
+    Plots a single seismogram.
+    """
+    parser.add_argument('--file_name', type=str,
+                        help='File name',
+                        metavar='', required=True)
+    local_args = parser.parse_known_args(args)
+    file_name = local_args[0].file_name
+    
+    control.plot_seismogram(params, file_name)
 
 def _read_parameter_file():
     """
@@ -193,11 +290,14 @@ def _read_parameter_file():
     for name in root.findall('event'):
         for event in name.findall('event_name'):
             event_list.append(event.text)
+    lasif_scratch_path = os.path.join(parameters['scratch_path'],
+        os.path.basename(parameters['lasif_path']))
 
     parameters.update({'forward_stage_dir': forward_stage_dir})
     parameters.update({'forward_run_dir': forward_run_dir})
     parameters.update({'iteration_xml_path': iteration_xml_path})
     parameters.update({'event_list': sorted(event_list)})
+    parameters.update({'lasif_scratch_path': lasif_scratch_path})
 
     return parameters
 
@@ -251,10 +351,10 @@ def main():
 
     # Print help.
     if not args or args == ["help"] or args == ["--help"]:
-        print "\nList of possible commands:"
-        for fct_name in fcts:
-            utils.print_blu(fct_name)
-            utils.print_ylw(_get_cmd_description(fcts[fct_name]))
+        print "\n"
+        for fct_name in sorted(fcts):
+            utils.print_cyn(fct_name)
+            utils.print_gry(_get_cmd_description(fcts[fct_name]))
         sys.exit()
 
     # Use lowercase to increase tolerance.
