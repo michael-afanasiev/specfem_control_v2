@@ -1,13 +1,11 @@
 #!/usr/bin/env python
 
 import os
-import sys
 import utils
 import shutil
 import subprocess
 
 import seismograms
-import cmt_solution
 
 
 def _setup_dir_tree(event, forward_run_dir):
@@ -50,7 +48,8 @@ def _copy_input_files(event, forward_run_dir, lasif_path, iteration_name,
                         'STF'])
                 utils.copy_directory(source, compile_data,
                                      exc=['Par_file, STF'])
-                                     
+
+
 def _change_job_and_par_file(params, run_type):
     """
     Runs and changes the simulation_type and simulation time in the submission
@@ -64,17 +63,17 @@ def _change_job_and_par_file(params, run_type):
         save_forward = '= .false.\n'
         sbatch_time = '#SBATCH --time=01:30:00\n'
     elif run_type == 'first_iteration' or run_type == 'update_mesh' \
-        or run_type == 'forward_run':
+            or run_type == 'forward_run':
         simulation_type = '= 1'
         save_forward = '= .true.\n'
         sbatch_time = '#SBATCH --time=00:30:00\n'
-        
+
     utils.print_ylw("Modifying Par_files for run type...")
     os.chdir(forward_run_dir)
     for dir in os.listdir('./'):
         if dir not in event_list and dir != 'mesh':
             continue
-        par_path = os.path.join(dir, 'DATA', 'Par_file')            
+        par_path = os.path.join(dir, 'DATA', 'Par_file')
         par_path_new = os.path.join(dir, 'DATA', 'Par_file_new')
         new_file = open(par_path_new, 'w')
         with open(par_path, 'r') as file:
@@ -85,19 +84,19 @@ def _change_job_and_par_file(params, run_type):
                 elif 'SAVE_FORWARD' in fields[0]:
                     new_file.write(fields[0] + save_forward)
                 elif fields[0].startswith('MODEL') and \
-                    run_type == 'update_mesh':
+                        run_type == 'update_mesh':
                     new_file.write(fields[0] + '= CEM_GLL\n')
                 elif fields[0].startswith('MODEL') and \
-                    run_type == 'first_iteration':
+                        run_type == 'first_iteration':
                     new_file.write(fields[0] + '= CEM_ACCEPT\n')
                 else:
                     new_file.write(line)
         os.rename(par_path_new, par_path)
-        
+
     utils.print_ylw("Modifying .sbatch file for run type...")
     os.chdir(forward_stage_dir)
     job_array = os.path.join('./', 'jobArray_solver_daint.sbatch')
-    new_job_array_name = os.path.join('./','jobArray_solver_daint.sbatch_new')
+    new_job_array_name = os.path.join('./', 'jobArray_solver_daint.sbatch_new')
     new_job_array = open(new_job_array_name, 'w')
     with open(job_array, 'r') as file:
         for line in file:
@@ -109,7 +108,7 @@ def _change_job_and_par_file(params, run_type):
     new_job_array.close()
     os.remove(job_array)
     os.rename(new_job_array_name, job_array)
-            
+
 
 def setup_solver(params):
     """
@@ -185,7 +184,7 @@ def setup_solver(params):
         proc = subprocess.Popen(['./mk_daint.sh', 'cray.tomo', 'adjoint'],
                                 stdout=output, stderr=output)
         proc.communicate()
-        proc.wait()        
+        proc.wait()
     utils.copy_directory(bin_directory, opt_bin_directory)
     compile_par = os.path.join(specfem_root, 'DATA', 'Par_file')
     utils.safe_copy(compile_par, opt_dat_directory)
@@ -243,25 +242,27 @@ def submit_solver(params, first_job, last_job, run_type):
     Submits the jobarray script for jobs first_job to last_job.
     """
     _change_job_and_par_file(params, run_type)
-    
+
     forward_stage_dir = params['forward_stage_dir']
     iteration_name = params['iteration_name']
     job_array = 'jobArray_solver_daint.sbatch'
     os.chdir(forward_stage_dir)
     subprocess.Popen(['sbatch', '--array=%s-%s' % (first_job, last_job),
                       job_array, iteration_name]).wait()
-                      
+
+
 def submit_mesher(params, run_type):
     """
     Submits the jobarray script in the mesh directory.
     """
-    
+
     _change_job_and_par_file(params, run_type)
-    
+
     forward_run_dir = params['forward_run_dir']
     os.chdir(os.path.join(forward_run_dir, 'mesh'))
     subprocess.Popen(['sbatch', 'job_mesher_daint.sbatch']).wait()
-                      
+
+
 def submit_window_selection(params, first_job, last_job):
     """
     Submits the window selection job for jobs first_job to last_job.
@@ -271,18 +272,19 @@ def submit_window_selection(params, first_job, last_job):
     iteration_name = params['iteration_name']
     lasif_project_name = os.path.basename(lasif_project_dir)
     lasif_scratch_dir = os.path.join(scratch_path, lasif_project_name)
-    
+
     # Get path of this script and .sbatch file.
     this_script = os.path.dirname(os.path.realpath(__file__))
-    sbatch_file = os.path.join(this_script, 'sbatch_scripts', 
-        'select_windows_parallel.sbatch')
-    
+    sbatch_file = os.path.join(this_script, 'sbatch_scripts',
+                               'select_windows_parallel.sbatch')
+
     # Change to the directory above this script, and submit the job.
     os.chdir(this_script)
-    subprocess.Popen(['sbatch', '--array=%s-%s' % (first_job, last_job), 
-        sbatch_file, lasif_scratch_dir, 
-            lasif_project_dir, iteration_name]).wait()
-            
+    subprocess.Popen(['sbatch', '--array=%s-%s' % (first_job, last_job),
+                      sbatch_file, lasif_scratch_dir,
+                      lasif_project_dir, iteration_name]).wait()
+
+
 def distribute_adjoint_sources(params):
     """
     Searches through the OUTPUT directory of the lasif project, and distributes
@@ -292,19 +294,19 @@ def distribute_adjoint_sources(params):
     lasif_output_dir = os.path.join(params['lasif_path'], 'OUTPUT')
     forward_run_dir = params['forward_run_dir']
     for dir in sorted(os.listdir(lasif_output_dir)):
-        
+
         if 'adjoint' not in dir:
             continue
-            
-        adjoint_source_dir = os.path.join(lasif_output_dir, dir)            
+
+        adjoint_source_dir = os.path.join(lasif_output_dir, dir)
         event_name = adjoint_source_dir[adjoint_source_dir.find('GCMT'):]
         solver_data_dir = os.path.join(forward_run_dir, event_name, 'DATA')
         solver_sem_dir = os.path.join(forward_run_dir, event_name, 'SEM')
-        adjoint_stations = os.listdir(adjoint_source_dir)    
-        
-        utils.print_ylw("Copying adjoint sources for " + event_name + "...")        
-        utils.mkdir_p(solver_sem_dir)        
-        # This is necessary because the adjoint source names expected by 
+        adjoint_stations = os.listdir(adjoint_source_dir)
+
+        utils.print_ylw("Copying adjoint sources for " + event_name + "...")
+        utils.mkdir_p(solver_sem_dir)
+        # This is necessary because the adjoint source names expected by
         # specfem3d_globe are opposite of what lasif puts out. Could just fix
         # this in lasif instead. This line would then reduce to a
         # 'copy_directory'.
@@ -312,25 +314,26 @@ def distribute_adjoint_sources(params):
             fields = old_name.split('.')
             new_name = fields[1] + '.' + fields[0] + '.' + fields[2] + '.' + \
                 fields[3]
-            utils.safe_copy_file(os.path.join(adjoint_source_dir, old_name), 
+            utils.safe_copy_file(os.path.join(adjoint_source_dir, old_name),
                                  os.path.join(solver_sem_dir, new_name))
-        
-        adjoint_stations = sorted(list(set([fields.split('.')[0] 
-                            + '.' + fields.split('.')[1] 
-                            for fields in adjoint_stations])))
-        with open(os.path.join(solver_data_dir, 'STATIONS_ADJOINT'), 'w') \
-            as sta_adj:
+
+        adjoint_stations = sorted(list(set([fields0.split('.')[0] +
+                                            '.' + fields0.split('.')[1]
+                                            for fields0 in adjoint_stations])))
+        with open(os.path.join(solver_data_dir, 'STATIONS_ADJOINT'), 'w') as \
+                sta_adj:
             sta = open(os.path.join(solver_data_dir, 'STATIONS'), 'r')
             for line in sta:
                 if line.split()[0] + '.' + line.split()[1] in adjoint_stations:
                     sta_adj.write(line)
-                    
+
     utils.print_blu('Done.')
-    
+
+
 def sum_kernels(params, first_job, last_job):
     """
     Goes through the output solver directory, and runs the summing
-    commands on the kernels that were output. Kernels will end up in the 
+    commands on the kernels that were output. Kernels will end up in the
     optimization/processed kernels directory.
     """
     forward_run_dir = params['forward_run_dir']
@@ -338,33 +341,34 @@ def sum_kernels(params, first_job, last_job):
     optimization_dir = os.path.join(forward_run_dir, 'OPTIMIZATION')
     gradient_info_dir = os.path.join(optimization_dir, 'GRADIENT_INFO')
     file_name = os.path.join(gradient_info_dir, 'kernels_list.txt')
-    
+
     # First, make sure that kernels exist in the directories.
     event_kernels = []
-    for event in os.listdir(forward_run_dir):        
-        if event not in event_list[first_job:last_job+1]:
-            continue        
+    for event in os.listdir(forward_run_dir):
+        if event not in event_list[first_job:last_job + 1]:
+            continue
         databases_mpi = os.path.join(forward_run_dir, event, 'DATABASES_MPI')
         if any('_kernel.bin' in s for s in os.listdir(databases_mpi)):
             event_kernels.append(event)
         else:
-            utils.print_red("Kernel not found for event: " + event) 
-                       
+            utils.print_red("Kernel not found for event: " + event)
+
     # Write the existing kernels_list file.
     with open(file_name, 'w') as outfile:
         for event in event_kernels:
             full_path = os.path.join(forward_run_dir, event, 'DATABASES_MPI')
             outfile.write(full_path + '\n')
-                
+
     # Get path of this script and .sbatch file.
     this_script = os.path.dirname(os.path.realpath(__file__))
-    sbatch_file = os.path.join(this_script, 'sbatch_scripts', 
-        'job_sum_kernels.sbatch')
-        
+    sbatch_file = os.path.join(this_script, 'sbatch_scripts',
+                               'job_sum_kernels.sbatch')
+
     # Change to the directory above this script, and submit the job.
     os.chdir(this_script)
     subprocess.Popen(['sbatch', sbatch_file, optimization_dir]).wait()
-    
+
+
 def smooth_kernels(params, horizontal_smoothing, vertical_smoothing):
     """
     Smoothes the summed kernels (requires that sum_kernels has already been
@@ -375,19 +379,20 @@ def smooth_kernels(params, horizontal_smoothing, vertical_smoothing):
                     'eta_kernel']
     kernel_dir = './PROCESSED_KERNELS'
     databases_mpi = '../mesh/DATABASES_MPI'
-    
+
     # Get path of this script and .sbatch file.
     this_script = os.path.dirname(os.path.realpath(__file__))
-    sbatch_file = os.path.join(this_script, 'sbatch_scripts', 
-    'job_smooth_kernels.sbatch')
-        
+    sbatch_file = os.path.join(this_script, 'sbatch_scripts',
+                               'job_smooth_kernels.sbatch')
+
     # Change to the directory above this script, and submit the job.
     os.chdir(this_script)
     for kernel_name in kernel_names:
         subprocess.Popen(
             ['sbatch', sbatch_file, horizontal_smoothing, vertical_smoothing,
              kernel_name, kernel_dir, databases_mpi, optimization_dir]).wait()
-             
+
+
 def setup_new_iteration(params, old_iteration, new_iteration):
     """
     Sets up a new iteration, and links the mesh files from the old iteration to
@@ -417,36 +422,38 @@ def setup_new_iteration(params, old_iteration, new_iteration):
                          ends='smooth.bin')
     utils.print_ylw("Copying DATA files...")
     for event in event_list:
-        old_data_dir = os.path.join(forward_stage_dir, old_iteration, event, 
+        old_data_dir = os.path.join(forward_stage_dir, old_iteration, event,
                                     'DATA')
-        new_data_dir = os.path.join(forward_stage_dir, new_iteration, event, 
+        new_data_dir = os.path.join(forward_stage_dir, new_iteration, event,
                                     'DATA')
-        utils.copy_directory(old_data_dir, new_data_dir, 
+        utils.copy_directory(old_data_dir, new_data_dir,
                              only=['Par_file', 'CMTSOLUTION', 'STATIONS'])
-    old_mesh_dir = os.path.join(forward_stage_dir, old_iteration, 'mesh', 
+    old_mesh_dir = os.path.join(forward_stage_dir, old_iteration, 'mesh',
                                 'DATA')
-    new_mesh_dir = os.path.join(forward_stage_dir, new_iteration, 'mesh', 
-                                'DATA') 
-    utils.copy_directory(old_mesh_dir, new_mesh_dir, 
-                         only=['Par_file', 'CMTSOLUTION', 'STATIONS'])                                
+    new_mesh_dir = os.path.join(forward_stage_dir, new_iteration, 'mesh',
+                                'DATA')
+    utils.copy_directory(old_mesh_dir, new_mesh_dir,
+                         only=['Par_file', 'CMTSOLUTION', 'STATIONS'])
     utils.print_blu('Done.')
-                 
+
+
 def add_smoothed_kernels(params, max_perturbation):
     """
-    Adds the transversely isotropic kernels back to the original model, and 
+    Adds the transversely isotropic kernels back to the original model, and
     puts the results in the ../mesh/DATA/GLL directory.
     """
     optimization_dir = os.path.join(params['forward_run_dir'], 'OPTIMIZATION')
     # Get path of this script and .sbatch file.
     this_script = os.path.dirname(os.path.realpath(__file__))
-    sbatch_file = os.path.join(this_script, 'sbatch_scripts', 
-    'job_add_smoothed_kernels.sbatch')
-        
+    sbatch_file = os.path.join(this_script, 'sbatch_scripts',
+                               'job_add_smoothed_kernels.sbatch')
+
     # Change to the directory above this script, and submit the job.
     os.chdir(this_script)
-    subprocess.Popen(['sbatch', sbatch_file, optimization_dir, 
+    subprocess.Popen(['sbatch', sbatch_file, optimization_dir,
                       max_perturbation]).wait()
-                      
+
+
 def clean_attenuation_dumps(params):
     """
     Goes through the simulation directories for an iteration, and cleans out
@@ -454,7 +461,7 @@ def clean_attenuation_dumps(params):
     """
     forward_run_dir = params['forward_run_dir']
     event_list = params['event_list']
-    
+
     for dir in sorted(os.listdir(forward_run_dir)):
         if dir in event_list:
             utils.print_ylw("Cleaning " + dir + "...")
@@ -463,7 +470,8 @@ def clean_attenuation_dumps(params):
                 if file.startswith('save_frame_at'):
                     os.remove(os.path.join(databases_mpi, file))
     utils.print_blu('Done.')
-                    
+
+
 def clean_event_kernels(params):
     """
     Goes through the simulation directories for an iteration, and cleans out
@@ -471,7 +479,7 @@ def clean_event_kernels(params):
     """
     forward_run_dir = params['forward_run_dir']
     event_list = params['event_list']
-    
+
     for dir in sorted(os.listdir(forward_run_dir)):
         if dir in event_list:
             utils.print_ylw("Cleaning " + dir + "...")
@@ -480,7 +488,8 @@ def clean_event_kernels(params):
                 if file.endswith('kernel.bin'):
                     os.remove(os.path.join(databases_mpi, file))
     utils.print_blu('Done.')
-    
+
+
 def clean_failed(params):
     """
     Deletes error files after a failed run.
@@ -496,7 +505,8 @@ def clean_failed(params):
         if os.path.exists(os.path.join(forward_run_dir, dir, 'core')):
             os.remove(os.path.join(forward_run_dir, dir, 'core'))
     utils.print_blu('Done.')
-    
+
+
 def generate_kernel_vtk(params, num_slices):
     """
     Generates .vtk files for the smoothed and summed kernels, and puts them
@@ -504,55 +514,56 @@ def generate_kernel_vtk(params, num_slices):
     """
     optimization_dir = os.path.join(params['forward_run_dir'], 'OPTIMIZATION')
     # Write slices file.
-    with open(os.path.join(optimization_dir, 'VTK_FILES', 
+    with open(os.path.join(optimization_dir, 'VTK_FILES',
                            'SLICES_ALL.txt'), 'w') as f:
         for i in range(0, num_slices):
             f.write(str(i) + '\n')
-            
+
     # Get path of this script and .sbatch file.
     this_script = os.path.dirname(os.path.realpath(__file__))
-    sbatch_file = os.path.join(this_script, 'sbatch_scripts', 
-        'job_generate_smoothed_kernels_vtk.sbatch')
-        
+    sbatch_file = os.path.join(this_script, 'sbatch_scripts',
+                               'job_generate_smoothed_kernels_vtk.sbatch')
+
     # Change to the directory above this script, and submit the job.
     os.chdir(this_script)
     subprocess.Popen(['sbatch', sbatch_file, optimization_dir]).wait()
-    
+
+
 def delete_adjoint_sources_for_iteration(params):
     """
-    Deletes the directories on both /scratch and /project which contain the 
+    Deletes the directories on both /scratch and /project which contain the
     adjoint sources for this iteration. As well, cleans the SEM and
     STATIONS_ADJOINT files for the solver.
     """
     forward_run_dir = params['forward_run_dir']
-    lasif_scratch_dir_output = os.path.join(params['lasif_scratch_path'], 
+    lasif_scratch_dir_output = os.path.join(params['lasif_scratch_path'],
                                             'OUTPUT')
     lasif_dir_output = os.path.join(params['lasif_path'], 'OUTPUT')
     iteration_name = params['iteration_name']
-    
+
     utils.print_ylw("Cleaning forward runs...")
     for dir in os.listdir(forward_run_dir):
         if not os.path.exists(os.path.join(forward_run_dir, dir, 'SEM')):
             continue
         for file in os.listdir(os.path.join(forward_run_dir, dir, 'SEM')):
             os.remove(os.path.join(forward_run_dir, dir, 'SEM', file))
-            
+
     utils.print_ylw("Cleaning LASIF scratch...")
     for dir in os.listdir(lasif_scratch_dir_output):
         if iteration_name and 'adjoint_sources' in dir:
             shutil.rmtree(os.path.join(lasif_scratch_dir_output, dir))
-    
+
     utils.print_ylw("Cleaning LASIF project...")
     for dir in os.listdir(lasif_dir_output):
         if iteration_name and 'adjoint_sources' in dir:
             shutil.rmtree(os.path.join(lasif_dir_output, dir))
-            
+
     utils.print_blu('Done.')
-    
+
+
 def plot_seismogram(params, file_name):
     """
     Plots a single seismogram.
     """
     seismogram = seismograms.Seismogram(file_name)
     seismogram.plot_seismogram()
-    

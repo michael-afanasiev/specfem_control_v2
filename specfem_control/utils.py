@@ -17,15 +17,19 @@ class colours:
 def print_blu(message):
     print colours.blu + message + colours.rst
 
+
 def print_ylw(message):
     print colours.ylw + message + colours.rst
-    
+
+
 def print_red(message):
     print colours.red + message + colours.rst
-    
+
+
 def print_gry(message):
     print colours.gry + message + colours.rst
-    
+
+
 def print_cyn(message):
     print colours.cyn + message + colours.rst
 
@@ -60,6 +64,7 @@ def safe_copy(source, dest):
         if exception.errno != errno.EEXIST:
             raise
 
+
 def safe_copy_file(source, dest):
     """
     Sets up a file copy that won't fail for a stupid reason.
@@ -76,6 +81,7 @@ def safe_copy_file(source, dest):
     except OSError as exception:
         if exception.errno != errno.EEXIST:
             raise
+
 
 def safe_sym_link(source, dest):
     """
