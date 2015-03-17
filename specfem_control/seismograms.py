@@ -2,10 +2,14 @@
 
 import os
 import math
+import utils
 import obspy
 
 import numpy as np
 import matplotlib.pyplot as plt
+
+class SeismogramNotFoundError(Exception):
+    pass
 
 
 class Seismogram(object):
@@ -30,6 +34,12 @@ class Seismogram(object):
             # Reverse X component to agree with LASIF
             if self.tr.stats.channel == 'X':
                 self.data = self.data * (-1)
+        
+        else:
+            raise SeismogramNotFoundError(utils.print_red("Seismogram not "
+                "found."))
+                
+        
 
     def normalize(self):
         """
@@ -40,7 +50,7 @@ class Seismogram(object):
 
     def convert_to_velocity(self):
         """
-        Uses a centered finite-difference approximation to convert a
+    Uses a centered finite-difference approximation to convert a
         displacement seismogram to a velocity seismogram.
         """
         self.tr.data = np.gradient(self.tr.data, self.tr.stats.delta)
@@ -53,26 +63,33 @@ class Seismogram(object):
         """
         n_convolve = int(math.ceil(2.5 * cmt_solution.half_duration /
                                    self.tr.stats.delta))
-        g_x = np.zeros(2 * n_convolve + 1)
+        print cmt_solution.half_duration
+        print n_convolve
+        print 2*n_convolve+1
+        # g_x = np.zeros(2 * n_convolve + 1)
+        #
+        # for i, j in enumerate(range(-n_convolve, n_convolve + 1)):
+        #     tau = j * self.tr.stats.delta
+        #     exponent = cmt_solution.alpha * cmt_solution.alpha * tau * tau
+        #     source = cmt_solution.alpha * math.exp(-exponent) / \
+        #         math.sqrt(math.pi)
+        #
+        #     g_x[i] = source * self.tr.stats.delta
 
-        for i, j in enumerate(range(-n_convolve, n_convolve + 1)):
-            tau = j * self.tr.stats.delta
-            exponent = cmt_solution.alpha * cmt_solution.alpha * tau * tau
-            source = cmt_solution.alpha * math.exp(-exponent) / \
-                math.sqrt(math.pi)
-
-            g_x[i] = source * self.tr.stats.delta
-
-        self.tr.data = np.convolve(self.tr.data, g_x, 'same')
+        # self.tr.data = np.convolve(self.tr.data, g_x, 'same')
+        # self.data = np.convolve(self.data, g_x, 'same')
 
     def filter(self, min_period, max_period):
         """
         Performs a bandpass filtering.
-        """
+        """        
         self.tr.filter('lowpass', freq=(1. / min_period), corners=5,
                        zerophase=True)
         self.tr.filter('highpass', freq=(1. / max_period), corners=2,
                        zerophase=True)
+                       
+    def write_sac(self, file):
+        pass
 
     def plot_seismogram(self):
         """
@@ -88,3 +105,4 @@ class Seismogram(object):
                  np.amax(np.absolute(norm_data)) * (1.2))
         plt.title('Plot of ' + self.fname)
         plt.show()
+        

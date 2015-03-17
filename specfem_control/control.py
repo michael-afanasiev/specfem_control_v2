@@ -5,8 +5,9 @@ import utils
 import shutil
 import subprocess
 
+import data
 import seismograms
-
+import cmt_solution
 
 def _setup_dir_tree(event, forward_run_dir):
     """
@@ -539,6 +540,10 @@ def delete_adjoint_sources_for_iteration(params):
     lasif_scratch_dir_output = os.path.join(params['lasif_scratch_path'],
                                             'OUTPUT')
     lasif_dir_output = os.path.join(params['lasif_path'], 'OUTPUT')
+    lasif_scratch_dir_adjoint = os.path.join(
+        params['lasif_scratch_path'], 'ADJOINT_SOURCES_AND_WINDOWS')
+    lasif_project_dir_adjoint = os.path.join(
+        params['lasif_path'], 'ADJOINT_SOURCES_AND_WINDOWS')
     iteration_name = params['iteration_name']
 
     utils.print_ylw("Cleaning forward runs...")
@@ -552,14 +557,44 @@ def delete_adjoint_sources_for_iteration(params):
     for dir in os.listdir(lasif_scratch_dir_output):
         if iteration_name and 'adjoint_sources' in dir:
             shutil.rmtree(os.path.join(lasif_scratch_dir_output, dir))
+    for dir in os.listdir(lasif_scratch_dir_adjoint):
+        for sub_dir in os.listdir(os.path.join(lasif_scratch_dir_adjoint, dir)):
+            shutil.rmtree(os.path.join(lasif_scratch_dir_adjoint, dir, sub_dir))            
 
     utils.print_ylw("Cleaning LASIF project...")
     for dir in os.listdir(lasif_dir_output):
         if iteration_name and 'adjoint_sources' in dir:
             shutil.rmtree(os.path.join(lasif_dir_output, dir))
+    for dir in os.listdir(lasif_project_dir_adjoint):
+        for sub_dir in os.listdir(os.path.join(lasif_project_dir_adjoint, dir)):
+            shutil.rmtree(os.path.join(lasif_project_dir_adjoint, dir, sub_dir))            
 
     utils.print_blu('Done.')
+    
+def process_synthetics(params, first_job, last_job):
+    """
+    Processes the synthetic seismograms in parallel.
+    """
+    event_list = params['event_list']
+    forward_run_dir = params['forward_run_dir']
+    chosen_events = [os.path.join(forward_run_dir, event, 'OUTPUT_FILES')] 
+    for event in event_list[first_job:last_job+1]:
+        pass        
+            
+def download_data(params, station_list, with_waveforms, recording_time, 
+                  padding_time):
+    """
+    Downloads data from IRIS.
+    """        
+    data.download_data(params, station_list, with_waveforms, recording_time, 
+                       padding_time)    
 
+def prefilter_data(params):
+    """
+    Rotates the downloaded data in the "DOWNLOADED" folder. Will fail if no
+    StationXML files exist, so make sure you've done this first.
+    """
+    data.prefilter_data(params)
 
 def plot_seismogram(params, file_name):
     """

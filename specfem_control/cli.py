@@ -260,8 +260,62 @@ def office_plot_seismogram(parser, args, params):
     file_name = local_args[0].file_name
 
     control.plot_seismogram(params, file_name)
+    
+@command_group("Data")
+def office_process_synthetics(parser, args, params):
+    """
+    Processes the synthetics seismograms in parallel.
+    """
+    parser.add_argument('-fj', type=int, help='First event to submit.',
+                        metavar='', required=True)
+    parser.add_argument('-lj', type=int, help='Last event to submit.',
+                        metavar='', required=True)
 
-
+    local_args = parser.parse_known_args(args)
+    first_job = local_args[0].fj
+    last_job = local_args[0].lj
+        
+    control.process_synthetics(params, first_job, last_job)
+    
+@command_group("Data")
+def office_download_data(parser, args, params):
+    """ 
+    Downloads data from IRIS.
+    """
+    parser.add_argument(
+        '--station_list', type=str, help='Station file from IRIS',
+        required=True, metavar='x')
+    parser.add_argument(
+        '--recording_time', type=int, 
+        help='Recording time from event start (seconds)', metavar='x',
+        required=True)
+    parser.add_argument(
+        '--padding_time', type=int,
+        help='Padding time', metavar='x',
+        required=True)
+    parser.add_argument(
+        '--with_waveforms', action='store_true',
+        help='Download waveform data (instead of just station data)')
+    
+    local_args = parser.parse_known_args(args)
+    
+    station_list = local_args[0].station_list
+    with_waveforms = local_args[0].with_waveforms
+    padding_time = local_args[0].padding_time
+    recording_time = local_args[0].recording_time
+    control.download_data(params, station_list, with_waveforms, recording_time,
+                          padding_time)
+                          
+@command_group("Data")
+def office_prefilter_data(parser, args, params):
+    """
+    Rotates the downloaded data in the "DOWNLOADED" folder. Will fail if no
+    StationXML files exist, so make sure you've done this first.
+    """
+    local_args = parser.parse_known_args(args)
+    
+    control.prefilter_data(params)
+    
 def _read_parameter_file():
     """
     Reads the parameter file and populates the parameter dictionary.
