@@ -12,6 +12,30 @@ class SeismogramNotFoundError(Exception):
     pass
 
 
+def plot_two(s1, s2):
+    
+    norm_data_s1 = s1.normalize()
+    time_s1 = s1.t / 60.
+    
+    norm_data_s2 = s2.normalize()
+    time_s2 = s2.t / 60.
+            
+    plt.plot(time_s1, norm_data_s1, 'k', label=s1.fname)
+    plt.plot(time_s2, norm_data_s2, 'r', label=s2.fname)
+    
+    ymax = max(np.amax(np.absolute(norm_data_s1)), 
+               np.amax(np.absolute(norm_data_s2))) * (1.2)
+    ymin = max(np.amax(np.absolute(norm_data_s1)), 
+               np.amax(np.absolute(norm_data_s2))) * (-1.2)
+    
+    plt.xlabel('Time (m)')
+    plt.ylabel('Amplitude (normalized)')
+    plt.xlim(0, max(time_s1))
+    plt.ylim(ymin, ymax)
+    plt.legend()
+
+    plt.show()
+    
 class Seismogram(object):
 
     def __init__(self, file_name):
@@ -21,6 +45,7 @@ class Seismogram(object):
             temp = np.loadtxt(file_name)
             self.t, self.data = temp[:, 0], temp[:, 1]
             self.fname = file_name
+            self.directory = os.path.dirname(file_name)
 
             # Initialize obspy
             self.tr = obspy.Trace(data=self.data)
@@ -34,7 +59,12 @@ class Seismogram(object):
             # Reverse X component to agree with LASIF
             if self.tr.stats.channel == 'X':
                 self.data = self.data * (-1)
-        
+                
+        elif file_name.endswith('.mseed'):            
+            self.tr = obspy.read(file_name)[0]
+            self.fname = file_name
+            self.t = np.array(
+                [x*self.tr.stats.delta for x in range(0, self.tr.stats.npts)])
         else:
             raise SeismogramNotFoundError(utils.print_red("Seismogram not "
                 "found."))
@@ -88,8 +118,15 @@ class Seismogram(object):
         self.tr.filter('highpass', freq=(1. / max_period), corners=2,
                        zerophase=True)
                        
-    def write_sac(self, file):
-        pass
+    def write_mseed(self):
+        """
+        Write an mseed file.
+        """
+        filename = os.path.join(
+            self.directory, self.tr.stats.network + '.' + self.tr.stats.station 
+            + '.' + self.tr.stats.location + '.' + self.tr.stats.channel + 
+            '.mseed')
+        self.tr.write(filename, format="mseed")
 
     def plot_seismogram(self):
         """

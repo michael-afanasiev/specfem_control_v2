@@ -75,7 +75,7 @@ def download_data(params, station_list, with_waveforms, recording_time,
     # Desired instruments.
     instruments = ['STS', 'KS']
         
-    lasif_data_path = os.path.join(params['lasif_path'], 'DATA', 'DOWNLOADED')
+    lasif_data_path = os.path.join(params['lasif_path'], 'DOWNLOADED_DATA')
     iteration_xml_path = params['iteration_xml_path']
     event_xml_directory = os.path.join(params['lasif_path'], 'EVENTS')
     event_list = params['event_list']
@@ -197,7 +197,7 @@ def prefilter_data(params):
     proper_components = ['BHZ', 'BHE', 'BHN']
     azi_dict = {'90.0' : 'BHE', '0.0' : 'BHN'}
     lasif_path = params['lasif_path']
-    lasif_data_path = os.path.join(params['lasif_path'], 'DATA', 'DOWNLOADED')
+    lasif_data_path = os.path.join(params['lasif_path'], 'DOWNLOADED_DATA')
     event_xml_directory = os.path.join(params['lasif_path'], 'EVENTS')
     lasif_stations_path = os.path.join(
         params['lasif_path'], 'STATIONS', 'StationXML')

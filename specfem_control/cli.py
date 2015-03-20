@@ -261,6 +261,23 @@ def office_plot_seismogram(parser, args, params):
 
     control.plot_seismogram(params, file_name)
     
+@command_group("Visualize")
+def office_plot_two_seismograms(parser, args, params):
+    """
+    Plots two seismograms.
+    """
+    parser.add_argument('--file_1', type=str,
+                        help='File name',
+                        metavar='', required=True)
+    parser.add_argument('--file_2', type=str,
+                        help='File name',
+                        metavar='', required=True)
+    local_args = parser.parse_known_args(args)
+    file_1 = local_args[0].file_1
+    file_2 = local_args[0].file_2
+
+    control.plot_two_seismograms(params, file_1, file_2)
+    
 @command_group("Data")
 def office_process_synthetics(parser, args, params):
     """
@@ -276,6 +293,22 @@ def office_process_synthetics(parser, args, params):
     last_job = local_args[0].lj
         
     control.process_synthetics(params, first_job, last_job)
+    
+@command_group("Data")
+def office_lasif_preprocess_data(parser, args, params):
+    """
+    Calls the lasif preprocessing function.
+    """
+    parser.add_argument('-fj', type=int, help='First event to submit.',
+                        metavar='', required=True)
+    parser.add_argument('-lj', type=int, help='Last event to submit.',
+                        metavar='', required=True)
+    
+    local_args = parser.parse_known_args(args)
+    first_job = local_args[0].fj
+    last_job = local_args[0].lj
+    
+    control.lasif_preprocess_data(params, first_job, last_job)
     
 @command_group("Data")
 def office_download_data(parser, args, params):
