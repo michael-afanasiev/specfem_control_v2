@@ -60,7 +60,7 @@ class Seismogram(object):
             if self.tr.stats.channel == 'X':
                 self.data = self.data * (-1)
                 
-        elif file_name.endswith('.mseed'):            
+        elif file_name.endswith('.mseed') or file_name.endswith('.sac'):            
             self.tr = obspy.read(file_name)[0]
             self.fname = file_name
             self.t = np.array(

@@ -77,7 +77,8 @@ def office_submit_solver(parser, args, params):
     parser.add_argument('-lj', type=int, help='Last event to submit.',
                         metavar='', required=True)
     parser.add_argument('--run_type', type=str,
-                        help='Specify either adjoint_run or forward_run.',
+                        help='Specify either adjoint_run, forward_run, or '
+                            'line_search.',
                         metavar='', required=True)
 
     local_args = parser.parse_known_args(args)
@@ -85,7 +86,8 @@ def office_submit_solver(parser, args, params):
     last_job = local_args[0].lj
     run_type = local_args[0].run_type
 
-    if run_type != 'adjoint_run' and run_type != 'forward_run':
+    if run_type != 'adjoint_run' and run_type != 'forward_run' and run_type \
+        != 'line_search':
         raise ParameterError("Must specifiy either forward_run or "
                              "adjoint_run")
 
@@ -309,7 +311,23 @@ def office_lasif_preprocess_data(parser, args, params):
     last_job = local_args[0].lj
     
     control.lasif_preprocess_data(params, first_job, last_job)
-    
+   
+@command_group("Data")
+def office_pack_up_all_seismograms(parser, args, params):
+    """
+    Cleans up any hanging .mseed or .sac files.
+    """
+    local_args = parser.parse_known_args(args)
+    control.pack_up_all_seismograms(params)
+
+@command_group("Data")
+def office_calculate_cumulative_misfit(parser, args, params):
+    """
+    Calculates the cumulative misfit for an iteration.
+    """
+    local_args = parser.parse_known_args(args)
+    control.calculate_cumulative_misfit(params)    
+
 @command_group("Data")
 def office_download_data(parser, args, params):
     """ 
@@ -387,23 +405,32 @@ def _read_parameter_file():
     forward_run_dir = os.path.join(
         forward_stage_dir,
         parameters['iteration_name'])
+    lasif_scratch_path = os.path.join(
+        parameters['scratch_path'],
+        os.path.basename(
+            parameters['lasif_path']))
 
     # Get list of all event names.
-    iteration_xml_path = os.path.join(
-        parameters['lasif_path'],
-        'ITERATIONS',
-        'ITERATION_%s.xml' %
-        (parameters['iteration_name']))
-    tree = ET.parse(iteration_xml_path)
+    try:
+        iteration_xml_path = os.path.join(
+            parameters['lasif_path'],
+            'ITERATIONS',
+            'ITERATION_%s.xml' %
+            (parameters['iteration_name']))
+        tree = ET.parse(iteration_xml_path)
+    except:
+        iteration_xml_path = os.path.join(
+            lasif_scratch_path,
+            'ITERATIONS',
+            'ITERATION_%s.xml' %
+            (parameters['iteration_name']))
+        tree = ET.parse(iteration_xml_path)        
+        
     root = tree.getroot()
     event_list = []
     for name in root.findall('event'):
         for event in name.findall('event_name'):
             event_list.append(event.text)
-    lasif_scratch_path = os.path.join(
-        parameters['scratch_path'],
-        os.path.basename(
-            parameters['lasif_path']))
 
     parameters.update({'forward_stage_dir': forward_stage_dir})
     parameters.update({'forward_run_dir': forward_run_dir})

@@ -27,6 +27,30 @@ def _copy_files_and_tar((source, dest)):
     with tarfile.open(tar_name, "w") as tar:
         for file in source_files:
             tar.add(os.path.join(source, file), arcname=file)
+            
+def _tar_seismograms(dir):
+    
+    utils.print_ylw("Tarring: " + dir + "...")
+    
+    tar_files = []
+    tar_name = os.path.join(dir, "data.tar")
+    for file in os.listdir(dir):
+        if file != "data.tar":
+            tar_files.append(os.path.join(dir, file))
+    
+    if not tar_files:
+        return
+    
+    with tarfile.open(tar_name, "w") as tar:
+        for file in tar_files:
+            tar.add(file, arcname=os.path.basename(file))
+            
+    for file in tar_files:
+        os.remove(file)
+        
+def _untar_seismograms(dir):
+    tar_name = os.path.join(dir, "data.tar")
+    
 
 def _setup_dir_tree(event, forward_run_dir):
     """
@@ -82,11 +106,18 @@ def _change_job_and_par_file(params, run_type):
         simulation_type = '= 3'
         save_forward = '= .false.\n'
         sbatch_time = '#SBATCH --time=04:00:00\n'
+        undo_attenuation = '= .true.\n'
     elif run_type == 'first_iteration' or run_type == 'update_mesh' \
             or run_type == 'forward_run':
         simulation_type = '= 1'
         save_forward = '= .true.\n'
         sbatch_time = '#SBATCH --time=02:00:00\n'
+        undo_attenuation = '= .true.\n'
+    elif run_type == 'line_search':
+        simulation_type = '= 1'
+        save_forward = '= .false.\n'
+        sbatch_time = '#SBATCH --time=02:00:00\n'
+        undo_attenuation = '= .false.\n'
 
     utils.print_ylw("Modifying Par_files for run type...")
     os.chdir(forward_run_dir)
@@ -99,6 +130,9 @@ def _change_job_and_par_file(params, run_type):
         with open(par_path, 'r') as file:
             for line in file:
                 fields = line.split('=')
+                if len(fields) == 1:
+                    new_file.write(line)
+                    continue                
                 if 'SIMULATION_TYPE' in fields[0]:
                     new_file.write(fields[0] + simulation_type + fields[1][2:])
                 elif 'SAVE_FORWARD' in fields[0]:
@@ -109,6 +143,8 @@ def _change_job_and_par_file(params, run_type):
                 elif fields[0].startswith('MODEL') and \
                         run_type == 'first_iteration':
                     new_file.write(fields[0] + '= CEM_ACCEPT\n')
+                elif fields[0].startswith('UNDO_ATTENUATION'):
+                    new_file.write(fields[0] + undo_attenuation)
                 else:
                     new_file.write(line)
         os.rename(par_path_new, par_path)
@@ -145,12 +181,43 @@ def _copy_relevant_lasif_files(params):
          + lasif_scratch_path], shell=True).wait()
     
     folders = ['CACHE', 'STATIONS', 'EVENTS', 'FUNCTIONS', 'ITERATIONS',
-               'OUTPUT', 'config.xml', 'LOGS', 'MODELS', 
-               'WAVEFIELDS', 'ADJOINT_SOURCES_AND_WINDOWS', 'KERNELS']
+               'OUTPUT', 'config.xml', 'LOGS', 'MODELS'] 
     
     for folder in folders:
         subprocess.Popen(['rsync', '-av', os.path.join(lasif_path, folder), 
                          lasif_scratch_path]).wait()
+
+def _copy_synthetics_for_iteration(params):
+    
+    lasif_path = params['lasif_path']
+    lasif_scratch_path = params['lasif_scratch_path']
+    iteration_name = params['iteration_name']
+    
+    iteration_synthetics = os.path.join(lasif_path, 'SYNTHETICS')
+    scratch_synthetics = os.path.join(lasif_scratch_path, 'SYNTHETICS') + "/"
+    utils.mkdir_p(lasif_scratch_path)
+    subprocess.Popen(
+        ["rsync", "-av", iteration_synthetics, scratch_synthetics]).wait()
+        
+
+def calculate_cumulative_misfit(params):
+    """
+    Goes through an iteration and calculates the cumulative misfit.
+    """
+    iteration_name = params['iteration_name']
+    lasif_scratch_path = params['lasif_scratch_path']
+    print "Calculating misfit for iteration %s." % (iteration_name)
+    # _copy_synthetics_for_iteration(params)
+    
+    # Get path of this script and .sbatch file.
+    this_script = os.path.dirname(os.path.realpath(__file__))
+    sbatch_file = os.path.join(this_script, 'sbatch_scripts',
+                               'submit_misfit_calculation.sbatch')
+
+    # Change to the directory above this script, and submit the job.
+    os.chdir(this_script)
+    subprocess.Popen(
+        ['sbatch', sbatch_file, lasif_scratch_path, iteration_name]).wait()
 
 
 def setup_solver(params):
@@ -303,6 +370,10 @@ def submit_mesher(params, run_type):
 
     forward_run_dir = params['forward_run_dir']
     os.chdir(os.path.join(forward_run_dir, 'mesh'))
+    utils.print_ylw("Cleaning old mesh files...")
+    for file in os.listdir("DATABASES_MPI"):
+        os.remove(os.path.join("DATABASES_MPI", file))
+    
     subprocess.Popen(['sbatch', 'job_mesher_daint.sbatch']).wait()
 
 
@@ -336,7 +407,7 @@ def distribute_adjoint_sources(params):
     """
     lasif_output_dir = os.path.join(params['lasif_path'], 'OUTPUT')
     forward_run_dir = params['forward_run_dir']
-    for dir in sorted(os.listdir(lasif_output_dir)):
+    for dir in sorted(os.listdir(lasif_output_dir))[::-1]:
 
         if 'adjoint' not in dir:
             continue
@@ -391,7 +462,11 @@ def sum_kernels(params, first_job, last_job):
         if event not in event_list[first_job:last_job + 1]:
             continue
         databases_mpi = os.path.join(forward_run_dir, event, 'DATABASES_MPI')
-        if any('_kernel.bin' in s for s in os.listdir(databases_mpi)):
+        kerns = []
+        for x in os.listdir(databases_mpi):
+            if 'bulk_c' in x:
+                kerns.append(x)
+        if len(kerns) == 24:
             event_kernels.append(event)
         else:
             utils.print_red("Kernel not found for event: " + event)
@@ -565,11 +640,56 @@ def clean_failed(params):
             for file in os.listdir(output_files):
                 if 'error' in file:
                     os.remove(os.path.join(output_files, file))
+                if 'sac' in file:
+                    os.remove(os.path.join(output_files, file))
         if os.path.exists(os.path.join(forward_run_dir, dir, 'core')):
             os.remove(os.path.join(forward_run_dir, dir, 'core'))
     utils.print_blu('Done.')
 
+def pack_up_all_seismograms(params):
+    """
+    Goes through the /project directory and packs up any loose seismograms.
+    """
+    lasif_path = params['lasif_path']
+    lasif_scratch_path = params['lasif_scratch_path']
 
+    data_path_1 = os.path.join(lasif_path, 'DATA')
+    data_path_2 = os.path.join(lasif_scratch_path, 'DATA')
+    synthetic_path_1 = os.path.join(lasif_path, 'SYNTHETICS')
+    synthetic_path_2 = os.path.join(lasif_scratch_path, 'SYNTHETICS')
+    
+    for data_path in [data_path_1, data_path_2]:
+    
+        # Data.
+        tar_dirs = []
+        for dir in sorted(os.listdir(data_path)):
+            for sub_dir in os.listdir(os.path.join(data_path, dir)):
+                sub_dir_path = os.path.join(data_path, dir, sub_dir)
+                if not os.path.isdir(sub_dir_path):
+                    continue
+                tar_dirs.append(sub_dir_path)
+    
+        if __name__ == "specfem_control.control":
+            pool = Pool(processes=cpu_count())
+            print "Using %d cpus..." % (cpu_count())
+            pool.map(_tar_seismograms, tar_dirs)
+        
+    for synthetic_path in [synthetic_path_1, synthetic_path_2]:
+        
+        # Synthetics.
+        tar_dirs = []
+        for dir in sorted(os.listdir(synthetic_path)):
+            for sub_dir in os.listdir(os.path.join(synthetic_path, dir)):
+                sub_dir_path = os.path.join(synthetic_path, dir, sub_dir)
+                if not os.path.isdir(sub_dir_path):
+                    continue
+                tar_dirs.append(sub_dir_path)
+        
+        if __name__ == "specfem_control.control":
+            pool = Pool(processes=cpu_count())
+            print "Using %d cpus..." % (cpu_count())
+            pool.map(_tar_seismograms, tar_dirs)
+        
 def generate_kernel_vtk(params, num_slices):
     """
     Generates .vtk files for the smoothed and summed kernels, and puts them

@@ -6,7 +6,7 @@
 #SBATCH --ntasks=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
-#SBATCH --time=01:00:00
+#SBATCH --time=02:00:00
 #SBATCH --output=./sbatch_logs/adjoint_source.%A.%a.o
 #SBATCH --error=./sbatch_logs/adjoint_source.%A.%a.e
 
@@ -66,7 +66,7 @@ done
 
 # Retar synthetics.
 cd $lasif_scratch_dir/SYNTHETICS/$my_event/ITERATION_$iteration_name
-tar -cvf data.tar *.mseed
+tar -cvf data.tar *.sac
 rm -f *.mseed
 
 # Retar data.
