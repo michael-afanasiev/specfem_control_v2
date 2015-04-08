@@ -9,6 +9,7 @@ import tarfile
 import subprocess
 
 import pandas as pd
+import matplotlib.pyplot as plt
 
 from itertools import repeat
 from obspy.fdsn import Client
@@ -22,6 +23,17 @@ XML_STRING = '{http://quakeml.org/xmlns/bed/1.2}'
 TO_SEC = 3600
 NUM_THREADS = 8
 
+def _download_files_new(bulk, download_path):
+        
+    time.sleep(1)
+    c = Client("IRIS")
+    
+    filename = download_path + "/data.mseed"
+    
+    # Attempt to download all valid locations. TODO clean up the location array.
+    c.get_waveforms_bulk(bulk, filename=filename)
+            
+            
 def _download_files((network, station, location, starttime, endtime, 
                     download_path)):
     
@@ -36,7 +48,7 @@ def _download_files((network, station, location, starttime, endtime,
         try:
             c.get_waveforms(
                 network=network, station=station,
-                location=location, channel="BH?",
+                location=location, channel='?H?',
                 starttime=starttime, endtime=endtime,
                 filename=filename)
             found = True
@@ -63,6 +75,29 @@ def _download_files((network, station, location, starttime, endtime,
             continue
             
     os.remove(filename)
+    
+def station_statistics(params, station_list):
+    """
+    Looks through the station_list file and makes some statistics on the data. 
+    Helpful for deciding downloading parameters.
+    """
+
+    # Read the data and parse out the important components.
+    stations_list = pd.read_csv(station_list, delimiter='|')
+    stations_list.fillna('00', inplace=True)
+    networks = stations_list['Network']   
+    stations = stations_list['Station']
+    sensors = stations_list['SensorDescription']
+    locations = stations_list['Location']
+    start_times = stations_list['StartTime']
+    
+    print str(len(stations)) + " entries."
+    start_times = [obspy.UTCDateTime(x).year for x in start_times]
+    
+    plt.hist(
+        start_times, bins=range(min(start_times), max(start_times) + 1,
+        1))
+    plt.show()
 
 def download_data(params, station_list, with_waveforms, recording_time, 
                   padding_time):
@@ -71,7 +106,12 @@ def download_data(params, station_list, with_waveforms, recording_time,
     obtained from IRIS (see manual), and parses out the STS and KS instruments
     (apparently the best ones). Then passes 
     """
-
+    # Domain boundaries
+    min_lat = -65
+    max_lat = 45
+    min_lon = -47.5
+    max_lon = 75
+    
     # Desired instruments.
     instruments = ['STS', 'KS']
         
@@ -84,29 +124,43 @@ def download_data(params, station_list, with_waveforms, recording_time,
     
     # Set up station tuple and allowable instruments.
     station = namedtuple('station', ['network', 'station', 'location', 
-                         'sensor'])
+                         'sensor', 's_time', 'e_time'])
     time = namedtuple('time', ['start', 'end'])
     
     # Read the data and parse out the important components.
     stations_list = pd.read_csv(station_list, delimiter='|')
+    
+    # Filter based on domain boundaries
+    stations_list = stations_list[stations_list.Latitude > min_lat]
+    stations_list = stations_list[stations_list.Latitude < max_lat]
+    stations_list = stations_list[stations_list.Longitude > min_lon]
+    stations_list = stations_list[stations_list.Longitude < max_lon]
+        
     stations_list.fillna('00', inplace=True)
-    networks = stations_list['#Network ']   
-    stations = stations_list[' Station ']
-    sensors = stations_list[' SensorDescription ']
-    locations = stations_list[' Location ']
-
+    networks = stations_list['Network']   
+    stations = stations_list['Station']
+    sensors = stations_list['SensorDescription']
+    locations = stations_list['Location']    
+    
+    # Filtered start times.
+    start_times = stations_list['StartTime']
+    start_times = [obspy.UTCDateTime(x) for x in start_times]
+    end_times = stations_list['EndTime']
+    end_times = [obspy.UTCDateTime(x) for x in end_times]    
+    
     # Filter the stations based on instrumentation.
     stations_filt = []
-    for net, sta, sen, loc in zip (networks, stations, sensors, locations):
-        if (any(i in sen for i in instruments)) and (loc == '00'):
+    for net, sta, sen, loc, s_time, e_time in zip(
+        networks, stations, sensors, locations, start_times, end_times):
+        if (loc == '00'):
             if not stations_filt:
                 stations_filt.append(
                     station(network=net, station=sta, location=loc, 
-                            sensor=sen))
+                            sensor=sen, s_time=s_time, e_time=e_time))
             elif stations_filt[-1].station != sta:
                 stations_filt.append(
                     station(network=net, station=sta, location=loc, 
-                            sensor=sen))                                                     
+                            sensor=sen, s_time=s_time, e_time=e_time))                                                     
     utils.print_blu("Found %i stations." % (len(stations_filt)))
 
     # Make download event data directories.
@@ -114,8 +168,14 @@ def download_data(params, station_list, with_waveforms, recording_time,
     for event in event_list:
         utils.mkdir_p(os.path.join(lasif_data_path, event))
     
+    # Number of events.
+    num_events = len(os.listdir(event_xml_directory))
+    
     # For each event...
     for i, event in enumerate(sorted(os.listdir(event_xml_directory))):
+        
+        # Make download event data directories if they weren't.
+        utils.mkdir_p(os.path.join(lasif_data_path, event[:-4]))
         
         # Start the timer and set path.
         start_time = timeit.default_timer()
@@ -124,7 +184,7 @@ def download_data(params, station_list, with_waveforms, recording_time,
         # Skip those for which files are already downloaded.
         if 'data.tar' in os.listdir(download_path):
             continue
-        utils.print_ylw('[' + str(i+1) + '/' + str(len(event_list)) + ']\t\t'
+        utils.print_ylw('[' + str(i+1) + '/' + str(num_events) + ']\t\t'
             'Downloading data for: ' + event[:-4])
         
         # Find start time and end time.
@@ -140,17 +200,34 @@ def download_data(params, station_list, with_waveforms, recording_time,
 
         # Download if requested (optimized for parallel).
         if with_waveforms:
+                        
+            # Make sure stations exist for the right time.
+            stations_filt_this = [x for x in stations_filt if 
+                                  (time.start > x.s_time) 
+                                  and (time.start < x.e_time)]                            
+                                  
+            print "%d stations in the right time interval." % \
+                (len(stations_filt_this))
 
             if __name__ == "specfem_control.data":
+                
                 pool = Pool(processes=NUM_THREADS)
-                net_pass = [x.network for x in stations_filt]
-                sta_pass = [x.station for x in stations_filt]
-                loc_pass = [x.location for x in stations_filt]
+                net_pass = [x.network for x in stations_filt_this]
+                sta_pass = [x.station for x in stations_filt_this]
+                loc_pass = [x.location for x in stations_filt_this]
+                
+                bulk = []
+                for x, y in zip(net_pass, sta_pass):
+                    bulk.append((x, y, "*", "*H*", time.start, time.end))
+                
+                print
+                _download_files_new(bulk, download_path)
 
-                pool.map(
-                    _download_files, zip(net_pass, sta_pass, loc_pass,
-                    repeat(time.start), repeat(time.end),
-                    repeat(download_path)))
+                sys.exit()
+                # pool.map(
+                #     _download_files, zip(net_pass, sta_pass, loc_pass,
+                #     repeat(time.start), repeat(time.end),
+                #     repeat(download_path)))
 
             # Tar and delete.
             tar = tarfile.open(os.path.join(download_path, "data.tar"), "w")
@@ -166,7 +243,7 @@ def download_data(params, station_list, with_waveforms, recording_time,
             utils.print_cyn("This event took %d seconds to download. At this "
                             "pace you'll be done in about %f hours." % 
                             (end_time - start_time, 
-                            (len(event_list) - i) * (end_time - start_time) 
+                            (num_events - i) * (end_time - start_time) 
                             / float(TO_SEC)))
                         
     utils.print_blu('Done (or skipping) downloading.')
@@ -184,9 +261,12 @@ def download_data(params, station_list, with_waveforms, recording_time,
         
         utils.print_ylw(
             "Downloading StationXML for: %s.%s" % (x.network, x.station))
-        c.get_stations(
-            network=x.network, station=x.station, location="*", channel="BH?",
-            level="response", filename=station_filename)
+        try:
+            c.get_stations(
+                network=x.network, station=x.station, location="*", channel="*",
+                level="response", filename=station_filename)
+        except:
+            utils.print_red("No data for %s" % (station_filename))
             
 def prefilter_data(params):
     """

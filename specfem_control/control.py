@@ -5,9 +5,13 @@ import utils
 import shutil
 import subprocess
 import tarfile
+import random
 
 import data
 import seismograms
+
+import numpy as np
+import matplotlib.pyplot as plt
 
 from multiprocessing import Pool, cpu_count
 
@@ -194,11 +198,50 @@ def _copy_synthetics_for_iteration(params):
     iteration_name = params['iteration_name']
     
     iteration_synthetics = os.path.join(lasif_path, 'SYNTHETICS')
-    scratch_synthetics = os.path.join(lasif_scratch_path, 'SYNTHETICS') + "/"
+    scratch_synthetics = os.path.join(lasif_scratch_path, 'SYNTHETICS')
     utils.mkdir_p(lasif_scratch_path)
+    rsync_string = "rsync -rav --include=" + iteration_synthetics + "/*/*00_globe_c* --exclude=* " + iteration_synthetics + " " + scratch_synthetics
     subprocess.Popen(
-        ["rsync", "-av", iteration_synthetics, scratch_synthetics]).wait()
+        [rsync_string], shell=True).wait()
+
         
+
+def get_quadratic_steplength(p1, m1, p2, m2, p3, m3):
+    """
+    Finds the minimum of a parabola that passes through the three points
+    (pn, mn).
+    """
+    # Define coefficient matrix.
+    A = np.matrix([[p1**2, p1, 1],
+                   [p2**2, p2, 1],
+                   [p3**2, p3, 1]])
+    
+    # Define right hand side (y-values).
+    rhs = np.matrix([[m1],
+                     [m2],
+                     [m3]])
+                     
+    # Solve linear system for coefficients.
+    a, b, c = np.linalg.solve(A, rhs).flat
+    
+    # Minimum where dy/dx = 0.
+    minimum = -b / (2*a)
+    min_fit = a*minimum**2 + b*minimum + c
+    print "Minimum in the quadratic approximation: " + str(minimum)
+    print "Estimated misfit value at minimum: " + str(min_fit)
+    
+    # Plot
+    minplot = minimum - 0.1
+    maxplot = minimum + 0.1
+    grid = np.linspace(minplot, maxplot, 10000)
+    fx = [a * x**2 + b * x + c for x in grid]
+    plt.plot(grid, fx)
+    plt.title("Minimum in the quadratic approximation.")
+    plt.xlabel("Step length")
+    plt.ylabel("Misfit")
+    plt.xlim(minplot, maxplot)
+    plt.show()
+    
 
 def calculate_cumulative_misfit(params):
     """
@@ -207,7 +250,7 @@ def calculate_cumulative_misfit(params):
     iteration_name = params['iteration_name']
     lasif_scratch_path = params['lasif_scratch_path']
     print "Calculating misfit for iteration %s." % (iteration_name)
-    # _copy_synthetics_for_iteration(params)
+    #_copy_synthetics_for_iteration(params)
     
     # Get path of this script and .sbatch file.
     this_script = os.path.dirname(os.path.realpath(__file__))
@@ -375,7 +418,106 @@ def submit_mesher(params, run_type):
         os.remove(os.path.join("DATABASES_MPI", file))
     
     subprocess.Popen(['sbatch', 'job_mesher_daint.sbatch']).wait()
+    
+def _unpack_if_needed(possible_tar_file):
+    
+    if os.path.exists(possible_tar_file):
+        utils.print_ylw("Unpacking %s..." % (possible_tar_file))
+        tar = tarfile.open(possible_tar_file)
+        tar.extractall(path=os.path.dirname(possible_tar_file))
+        os.remove(possible_tar_file)
 
+def plot_random_seismograms(params, num):
+    """
+    Plots num randomly selected seismograms.
+    """
+    lasif_scratch_path = params['lasif_scratch_path']
+    iteration_name = params['iteration_name']
+    lasif_windows_path = os.path.join(
+        lasif_scratch_path, 'ADJOINT_SOURCES_AND_WINDOWS', 'WINDOWS')
+    all_events = sorted(os.listdir(lasif_windows_path))
+    num_events = len(all_events)
+    
+    # Choose random events
+    chosen_events = []
+    for i in range(num):
+        chosen_events.append(all_events[random.randint(0, num_events)])
+        
+    # Choose one trace per event.
+    chosen_traces = []
+    for e in chosen_events:
+        window_path = os.path.join(
+            lasif_windows_path, e, 'ITERATION_' + iteration_name)
+        all_traces = os.listdir(window_path)
+        chosen_traces.append(
+            all_traces[random.randint(0, len(all_traces)-1)].split('_')[1][:-4])
+            
+    # Find all the synthetics you need.
+    chosen_synthetics = []
+    for x, e in zip(chosen_traces, chosen_events):
+        
+        # Check to see if data needs to be untarred.
+        possible_tar_file = os.path.join(
+            lasif_scratch_path, 'SYNTHETICS', e, 'ITERATION_' + iteration_name,
+            'data.tar')
+        # _unpack_if_needed(possible_tar_file)
+                    
+        # Add files to list.
+        chosen_synthetics.append(
+            os.path.join(
+                os.path.dirname(possible_tar_file), 
+                '.'.join(x.split('.')[0:2]) + '.MX%s.sem.sac' % (x[-1])))
+
+    # Find all the data you need.     
+    chosen_data = []
+    for x, e in zip(chosen_traces, chosen_events):
+        
+        # Check to see if data needs to be untarred.
+        possible_tar_file = os.path.join(
+            lasif_scratch_path, 'DATA', e, 
+            'preprocessed_hp_0.00833_lp_0.01667_npts_38850_dt_0.142500',
+            'data.tar')
+        _unpack_if_needed(possible_tar_file)
+        
+        possible_file = os.path.join(
+                lasif_scratch_path, 'DATA', e, 
+                'preprocessed_hp_0.00833_lp_0.01667_npts_38850_dt_0.142500', 
+                '.'.join(x.split('.')[0:2]) + '.00.BH%s.mseed' % (x[-1]))
+        if not os.path.exists(possible_file):
+            possible_file = os.path.join(
+                    lasif_scratch_path, 'DATA', e, 
+                    'preprocessed_hp_0.00833_lp_0.01667_npts_38850_dt_0.142500', 
+                    '.'.join(x.split('.')[0:2]) + '..BH%s.mseed' % (x[-1]))            
+
+        chosen_data.append(possible_file)
+    
+    nrows = 4
+    ncols = 2
+    fig, axs = plt.subplots(nrows, ncols, sharex='col', sharey='row', 
+                            figsize=(ncols*8, nrows*2.5))
+    for x, y, ax in zip(chosen_data, chosen_synthetics, axs.flat):
+        plot_two_seismograms(
+            params, x, y, process_s1=False, process_s2=True, 
+            plot=False, ax=ax, legend=False)
+
+    from string import ascii_lowercase
+    for i, a in enumerate(axs.flat):
+        a.text(0.965, 0.9, ascii_lowercase[i] + ')', transform=a.transAxes)
+        
+    for i, row in enumerate(axs):
+        for j, cell in enumerate(row):
+            if i == len(axs) - 1:
+                cell.set_xlabel('Time (m)')
+            if j == 0:
+                cell.set_ylabel('Amplitude (normalized)')
+
+    fig.suptitle("Data (black) and synthetics (red)")
+    plt.tight_layout()
+    plt.savefig('seismo.pdf', bbox_inches='tight')
+    plt.show()
+    
+    for x, y in zip(chosen_synthetics, chosen_data):
+        print x, y
 
 def submit_window_selection(params, first_job, last_job):
     """
@@ -464,7 +606,7 @@ def sum_kernels(params, first_job, last_job):
         databases_mpi = os.path.join(forward_run_dir, event, 'DATABASES_MPI')
         kerns = []
         for x in os.listdir(databases_mpi):
-            if 'bulk_c' in x:
+            if 'hess' in x:
                 kerns.append(x)
         if len(kerns) == 24:
             event_kernels.append(event)
@@ -658,7 +800,7 @@ def pack_up_all_seismograms(params):
     synthetic_path_1 = os.path.join(lasif_path, 'SYNTHETICS')
     synthetic_path_2 = os.path.join(lasif_scratch_path, 'SYNTHETICS')
     
-    for data_path in [data_path_1, data_path_2]:
+    for data_path in [data_path_1]:#, data_path_2]:
     
         # Data.
         tar_dirs = []
@@ -674,7 +816,7 @@ def pack_up_all_seismograms(params):
             print "Using %d cpus..." % (cpu_count())
             pool.map(_tar_seismograms, tar_dirs)
         
-    for synthetic_path in [synthetic_path_1, synthetic_path_2]:
+    for synthetic_path in [synthetic_path_1]:#, synthetic_path_2]:
         
         # Synthetics.
         tar_dirs = []
@@ -710,7 +852,31 @@ def generate_kernel_vtk(params, num_slices):
     # Change to the directory above this script, and submit the job.
     os.chdir(this_script)
     subprocess.Popen(['sbatch', sbatch_file, optimization_dir]).wait()
-
+    
+def generate_model_vtk(params, num_slices):
+    """
+    Generates .vtk files for the model, and puts them
+    in the mesh/VTK_FILES directory.
+    """
+    mesh_dir = os.path.join(params['forward_run_dir'], 'mesh')
+    
+    # Make VTK folder.
+    utils.mkdir_p(os.path.join(mesh_dir, 'VTK_FILES'))
+    
+    # Write slices file.
+    with open(os.path.join(mesh_dir, 'VTK_FILES',
+                           'SLICES_ALL.txt'), 'w') as f:
+        for i in range(0, num_slices):
+            f.write(str(i) + '\n')
+            
+    # Get path of this script and .sbatch file.
+    this_script = os.path.dirname(os.path.realpath(__file__))
+    sbatch_file = os.path.join(this_script, 'sbatch_scripts',
+                               'job_generate_model_vtk.sbatch')
+        
+    # Change to the directory above this script, and submit the job.
+    os.chdir(this_script)
+    subprocess.Popen(['sbatch', sbatch_file, mesh_dir]).wait()
 
 def delete_adjoint_sources_for_iteration(params):
     """
@@ -780,9 +946,16 @@ def download_data(params, station_list, with_waveforms, recording_time,
                   padding_time):
     """
     Downloads data from IRIS.
-    """        
+    """ 
     data.download_data(params, station_list, with_waveforms, recording_time, 
                        padding_time)    
+
+def station_statistics(params, station_list):
+    """
+    Looks through the station_list file and makes some statistics on the data. 
+    Helpful for deciding downloading parameters.
+    """   
+    data.station_statistics(params, station_list)    
 
 def prefilter_data(params):
     """
@@ -798,11 +971,13 @@ def plot_seismogram(params, file_name):
     seismogram = seismograms.Seismogram(file_name)
     seismogram.plot_seismogram()
     
-def plot_two_seismograms(params, file_1, file_2):
+def plot_two_seismograms(
+    params, file_1, file_2, process_s1=False, process_s2=False, ax=None, 
+    plot=False, legend=True):
     """
     Plots two sesimograms on top of each other.
     """
     s1 = seismograms.Seismogram(file_1)
     s2 = seismograms.Seismogram(file_2)
-    seismograms.plot_two(s1, s2)
-
+    seismograms.plot_two(s1, s2, process_s1=process_s1, process_s2=process_s2,
+        ax=ax, plot=plot, legend=legend)

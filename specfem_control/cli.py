@@ -237,7 +237,20 @@ def office_generate_kernel_vtk(parser, args, params):
     num_slices = local_args[0].num_slices
 
     control.generate_kernel_vtk(params, num_slices)
+    
+@command_group("Visualize")
+def office_generate_model_vtk(parser, args, params):
+    """
+    Generates .vtk files for the models, and puts them
+    in the mesh/VTK_FILES directory.
+    """
+    parser.add_argument('--num_slices', type=int,
+                        help='Number of slices (processors)',
+                        metavar='', required=True)
+    local_args = parser.parse_known_args(args)
+    num_slices = local_args[0].num_slices
 
+    control.generate_model_vtk(params, num_slices)
 
 @command_group("Setup")
 def office_delete_adjoint_sources_for_iteration(parser, args, params):
@@ -262,6 +275,19 @@ def office_plot_seismogram(parser, args, params):
     file_name = local_args[0].file_name
 
     control.plot_seismogram(params, file_name)
+    
+@command_group("Visualize")
+def office_plot_random_seismograms(parser, args, params):
+    """
+    Plots a selection of seismograms for which windows were selected.
+    """
+    parser.add_argument('--num', type=int,
+                        help='File name',
+                        metavar='', required=True)
+    local_args = parser.parse_known_args(args)
+    num = local_args[0].num
+
+    control.plot_random_seismograms(params, num)
     
 @command_group("Visualize")
 def office_plot_two_seismograms(parser, args, params):
@@ -328,6 +354,28 @@ def office_calculate_cumulative_misfit(parser, args, params):
     local_args = parser.parse_known_args(args)
     control.calculate_cumulative_misfit(params)    
 
+@command_group("Optimization")
+def office_get_quadratic_steplength(parser, args, params):
+    """
+    Finds the minimum of a parabola given by 3 point pairs.
+    """
+    parser.add_argument('p1x', metavar='p1x', type=float, nargs=1)
+    parser.add_argument('p1y', metavar='p1y', type=float, nargs=1)
+    parser.add_argument('p2x', metavar='p2x', type=float, nargs=1)    
+    parser.add_argument('p2y', metavar='p2y', type=float, nargs=1)    
+    parser.add_argument('p3x', metavar='p3x', type=float, nargs=1)    
+    parser.add_argument('p3y', metavar='p3y', type=float, nargs=1)    
+    
+    local_args = parser.parse_known_args(args[1:])
+    p1 = local_args[0].p1x[0]
+    m1 = local_args[0].p1y[0]
+    p2 = local_args[0].p2x[0]
+    m2 = local_args[0].p2y[0]
+    p3 = local_args[0].p3x[0]
+    m3 = local_args[0].p3y[0]
+    
+    control.get_quadratic_steplength(p1, m1, p2, m2, p3, m3)
+
 @command_group("Data")
 def office_download_data(parser, args, params):
     """ 
@@ -356,7 +404,21 @@ def office_download_data(parser, args, params):
     recording_time = local_args[0].recording_time
     control.download_data(params, station_list, with_waveforms, recording_time,
                           padding_time)
-                          
+ 
+@command_group("Data")
+def office_station_statistics(parser, args, params):
+    """
+    Looks through the station_list file and makes some statistics on the data. 
+    Helpful for deciding downloading parameters.
+    """   
+    parser.add_argument(
+        '--station_list', type=str, help='Station file from IRIS',
+        required=True, metavar='x')
+    
+    local_args = parser.parse_known_args(args)
+    
+    station_list = local_args[0].station_list
+    control.station_statistics(params, station_list)
 @command_group("Data")
 def office_prefilter_data(parser, args, params):
     """

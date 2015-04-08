@@ -5,6 +5,8 @@ import math
 import utils
 import obspy
 
+
+
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -12,29 +14,41 @@ class SeismogramNotFoundError(Exception):
     pass
 
 
-def plot_two(s1, s2):
+def plot_two(s1, s2, process_s1=False, process_s2=False, plot=True, ax=None,
+             legend=True, xlabel=None, ylabel=None):
+    
+    if process_s1:
+        s1.process_synthetics()
+    if process_s2:
+        s2.process_synthetics()
     
     norm_data_s1 = s1.normalize()
     time_s1 = s1.t / 60.
     
     norm_data_s2 = s2.normalize()
     time_s2 = s2.t / 60.
-            
-    plt.plot(time_s1, norm_data_s1, 'k', label=s1.fname)
-    plt.plot(time_s2, norm_data_s2, 'r', label=s2.fname)
-    
+                
     ymax = max(np.amax(np.absolute(norm_data_s1)), 
                np.amax(np.absolute(norm_data_s2))) * (1.2)
     ymin = max(np.amax(np.absolute(norm_data_s1)), 
-               np.amax(np.absolute(norm_data_s2))) * (-1.2)
+               np.amax(np.absolute(norm_data_s2))) * (-1.2)            
+        
     
-    plt.xlabel('Time (m)')
-    plt.ylabel('Amplitude (normalized)')
-    plt.xlim(0, max(time_s1))
-    plt.ylim(ymin, ymax)
-    plt.legend()
+    # ax.set_xlabel('Time (m)')
+    # ax.set_ylabel('Amplitude (normalized)')
+    ax.set_xlim(0, max(time_s1))
+    ax.set_ylim(ymin, ymax)
+    
+    # Plot datas.
+    ax.plot(time_s1, norm_data_s1, 'k', label=s1.fname)
+    ax.plot(time_s2, norm_data_s2, 'r', label=s2.fname)
+    
+    if legend:    
+        ax.legend()
 
-    plt.show()
+    if plot:
+        plt.show()
+        raw_input()
     
 class Seismogram(object):
 
@@ -70,6 +84,50 @@ class Seismogram(object):
                 "found."))
                 
         
+    def process_synthetics(self): 
+        
+        lowpass_freq = 1/60.
+        highpass_freq = 1/120.
+    
+        freqmin=highpass_freq
+        freqmax=lowpass_freq
+
+        f2 = highpass_freq
+        f3 = lowpass_freq
+        f1 = 0.8 * f2
+        f4 = 1.2 * f3
+        pre_filt = (f1, f2, f3, f4)
+    
+        self.tr.differentiate()
+    
+        # self.tr.data = convolve_stf(self.tr.data)
+
+        self.tr.detrend("linear")
+        self.tr.detrend("demean")
+        self.tr.taper(max_percentage=0.05, type="hann")
+
+        # Perform a frequency domain taper like during the response removal
+        # just without an actual response...
+
+        data = self.tr.data.astype(np.float64)
+        orig_len = len(data)
+
+        # smart calculation of nfft dodging large primes
+        from obspy.signal.util import _npts2nfft
+        from obspy.signal.invsim import c_sac_taper
+        nfft = _npts2nfft(len(data))
+
+        fy = 1.0 / (self.tr.stats.delta * 2.0)
+        freqs = np.linspace(0, fy, nfft // 2 + 1)
+
+        # Transform data to Frequency domain
+        data = np.fft.rfft(data, n=nfft)
+        data *= c_sac_taper(freqs, flimit=pre_filt)
+        data[-1] = abs(data[-1]) + 0.0j
+        # transform data back into the time domain
+        data = np.fft.irfft(data)[0:orig_len]
+        # assign processed data and store processing information
+        self.tr.data = data
 
     def normalize(self):
         """
@@ -132,6 +190,7 @@ class Seismogram(object):
         """
         Plots the seismogram in the time domain.
         """
+        self.process_synthetics()
         norm_data = self.normalize()
         time = self.t / 60.
         plt.plot(time, norm_data, 'k')
@@ -142,4 +201,3 @@ class Seismogram(object):
                  np.amax(np.absolute(norm_data)) * (1.2))
         plt.title('Plot of ' + self.fname)
         plt.show()
-        
