@@ -972,8 +972,8 @@ def plot_seismogram(params, file_name):
     seismogram.plot_seismogram()
     
 def plot_two_seismograms(
-    params, file_1, file_2, process_s1=False, process_s2=False, ax=None, 
-    plot=False, legend=True):
+    params, file_1, file_2, process_s1=False, process_s2=True, ax=None, 
+    plot=True, legend=True):
     """
     Plots two sesimograms on top of each other.
     """

@@ -23,59 +23,43 @@ XML_STRING = '{http://quakeml.org/xmlns/bed/1.2}'
 TO_SEC = 3600
 NUM_THREADS = 8
 
-def _download_files_new(bulk, download_path):
+def _download_bulk_waveforms(
+    (event, networks, stations, start_times, end_times, download_path,
+    event_xml_directory, recording_time, padding_time)):
         
     time.sleep(1)
     c = Client("IRIS")
     
-    filename = download_path + "/data.mseed"
+    # Make directory.
+    utils.mkdir_p(os.path.join(download_path, event))    
+    filename = os.path.join(download_path, event, 'data.mseed')
     
-    # Attempt to download all valid locations. TODO clean up the location array.
-    c.get_waveforms_bulk(bulk, filename=filename)
-            
-            
-def _download_files((network, station, location, starttime, endtime, 
-                    download_path)):
-    
-    time.sleep(1)
-    c = Client("IRIS")
-    
-    filename = download_path + "/%s.%s.%s.mseed" % (network, station, location)
-
-    # Attempt to download all valid locations. TODO clean up the location array.
-    found = False
-    for location in ['', '00', '10', '20', '30', '01', '02', '03']:
-        try:
-            c.get_waveforms(
-                network=network, station=station,
-                location=location, channel='?H?',
-                starttime=starttime, endtime=endtime,
-                filename=filename)
-            found = True
-            break
-        except:
-            continue
-            
-    if found == False:
-        print "Data non-existatant for: %s.%s" % (network, station)
+    # Don't re-download files.
+    if os.path.exists(filename):
         return
-                 
-    # Split full .mseed file into components.                                 
-    tr = obspy.read(filename)
-    for trace in tr:
-        try:
-            trace.write(
-                download_path + "/%s.%s.%s.%s.mseed" % 
-                (trace.stats.network, trace.stats.station, trace.stats.location, 
-                trace.stats.channel), format='mseed')
-        except:
-            print "Bad component for station: %s.%s.%s.%s" % \
-                (trace.stats.network, trace.stats.station, trace.stats.location, 
-                trace.stats.channel)
-            continue
             
-    os.remove(filename)
+    # Find start time and end time.
+    event_info = os.path.join(event_xml_directory, event + '.xml')
+    tree = ET.parse(event_info)
+    root = tree.getroot()
+    for tag in root.iter():
+        if tag.tag == XML_STRING + 'time':
+            time.start = obspy.UTCDateTime(
+                tag.findall(XML_STRING + 'value')[0].text) - padding_time
+            time.end = time.start + recording_time + 2 * padding_time
+            break
+
+    # Set up request.
+    bulk = []
+    for x, y, s_time, e_time in zip(networks, stations, start_times, end_times):
+        
+        if time.start < s_time or time.start > e_time:
+            continue        
+        bulk.append((x, y, '*', '*H*', time.start, time.end))
     
+    utils.print_ylw('Downloading %s...' % (event))
+    c.get_waveforms_bulk(bulk, filename=filename, quality='B')
+
 def station_statistics(params, station_list):
     """
     Looks through the station_list file and makes some statistics on the data. 
@@ -111,10 +95,8 @@ def download_data(params, station_list, with_waveforms, recording_time,
     max_lat = 45
     min_lon = -47.5
     max_lon = 75
-    
-    # Desired instruments.
-    instruments = ['STS', 'KS']
         
+    # Set up paths and such.
     lasif_data_path = os.path.join(params['lasif_path'], 'DOWNLOADED_DATA')
     iteration_xml_path = params['iteration_xml_path']
     event_xml_directory = os.path.join(params['lasif_path'], 'EVENTS')
@@ -125,140 +107,49 @@ def download_data(params, station_list, with_waveforms, recording_time,
     # Set up station tuple and allowable instruments.
     station = namedtuple('station', ['network', 'station', 'location', 
                          'sensor', 's_time', 'e_time'])
-    time = namedtuple('time', ['start', 'end'])
     
     # Read the data and parse out the important components.
     stations_list = pd.read_csv(station_list, delimiter='|')
+    stations_list.fillna('00', inplace=True)
     
     # Filter based on domain boundaries
     stations_list = stations_list[stations_list.Latitude > min_lat]
     stations_list = stations_list[stations_list.Latitude < max_lat]
     stations_list = stations_list[stations_list.Longitude > min_lon]
     stations_list = stations_list[stations_list.Longitude < max_lon]
+    stations_list = stations_list[stations_list.Location == '00']
+    stations_list['StartTime'] = \
+        stations_list['StartTime'].astype(obspy.UTCDateTime)
+    stations_list['EndTime'] = \
+        stations_list['EndTime'].astype(obspy.UTCDateTime)
         
-    stations_list.fillna('00', inplace=True)
-    networks = stations_list['Network']   
-    stations = stations_list['Station']
-    sensors = stations_list['SensorDescription']
-    locations = stations_list['Location']    
-    
-    # Filtered start times.
-    start_times = stations_list['StartTime']
-    start_times = [obspy.UTCDateTime(x) for x in start_times]
-    end_times = stations_list['EndTime']
-    end_times = [obspy.UTCDateTime(x) for x in end_times]    
-    
-    # Filter the stations based on instrumentation.
-    stations_filt = []
-    for net, sta, sen, loc, s_time, e_time in zip(
-        networks, stations, sensors, locations, start_times, end_times):
-        if (loc == '00'):
-            if not stations_filt:
-                stations_filt.append(
-                    station(network=net, station=sta, location=loc, 
-                            sensor=sen, s_time=s_time, e_time=e_time))
-            elif stations_filt[-1].station != sta:
-                stations_filt.append(
-                    station(network=net, station=sta, location=loc, 
-                            sensor=sen, s_time=s_time, e_time=e_time))                                                     
-    utils.print_blu("Found %i stations." % (len(stations_filt)))
-
-    # Make download event data directories.
-    utils.mkdir_p(lasif_data_path)
-    for event in event_list:
-        utils.mkdir_p(os.path.join(lasif_data_path, event))
-    
     # Number of events.
     num_events = len(os.listdir(event_xml_directory))
+    event_names = sorted([x[:-4] for x in os.listdir(event_xml_directory)])
     
-    # For each event...
-    for i, event in enumerate(sorted(os.listdir(event_xml_directory))):
-        
-        # Make download event data directories if they weren't.
-        utils.mkdir_p(os.path.join(lasif_data_path, event[:-4]))
-        
-        # Start the timer and set path.
-        start_time = timeit.default_timer()
-        download_path = os.path.join(lasif_data_path, event[:-4])
-                
-        # Skip those for which files are already downloaded.
-        if 'data.tar' in os.listdir(download_path):
-            continue
-        utils.print_ylw('[' + str(i+1) + '/' + str(num_events) + ']\t\t'
-            'Downloading data for: ' + event[:-4])
-        
-        # Find start time and end time.
-        event_info = os.path.join(event_xml_directory, event)
-        tree = ET.parse(event_info)
-        root = tree.getroot()
-        for tag in root.iter():
-            if tag.tag == XML_STRING + 'time':
-                time.start = obspy.UTCDateTime(
-                    tag.findall(XML_STRING + 'value')[0].text) - padding_time
-                time.end = time.start + recording_time + 2 * padding_time
-                break
+    # Event arrays.
+    networks = stations_list.Network
+    stations = stations_list.Station
+    start_time = stations_list.StartTime
+    end_time = stations_list.EndTime
 
-        # Download if requested (optimized for parallel).
-        if with_waveforms:
-                        
-            # Make sure stations exist for the right time.
-            stations_filt_this = [x for x in stations_filt if 
-                                  (time.start > x.s_time) 
-                                  and (time.start < x.e_time)]                            
-                                  
-            print "%d stations in the right time interval." % \
-                (len(stations_filt_this))
+    # Waveforms.
+    pool = Pool(processes=NUM_THREADS)
+    pool.map(_download_bulk_waveforms, zip(
+        event_names, repeat(networks), repeat(stations), repeat(start_time),
+        repeat(end_time), repeat(lasif_data_path), repeat(event_xml_directory),
+        repeat(recording_time), repeat(padding_time)))    
 
-            if __name__ == "specfem_control.data":
-                
-                pool = Pool(processes=NUM_THREADS)
-                net_pass = [x.network for x in stations_filt_this]
-                sta_pass = [x.station for x in stations_filt_this]
-                loc_pass = [x.location for x in stations_filt_this]
-                
-                bulk = []
-                for x, y in zip(net_pass, sta_pass):
-                    bulk.append((x, y, "*", "*H*", time.start, time.end))
-                
-                print
-                _download_files_new(bulk, download_path)
-
-                sys.exit()
-                # pool.map(
-                #     _download_files, zip(net_pass, sta_pass, loc_pass,
-                #     repeat(time.start), repeat(time.end),
-                #     repeat(download_path)))
-
-            # Tar and delete.
-            tar = tarfile.open(os.path.join(download_path, "data.tar"), "w")
-            for name in os.listdir(download_path):
-                tar.add(os.path.join(download_path, name), arcname=name)
-            tar.close()
-            for name in os.listdir(download_path):
-                if not name.endswith('.tar'):
-                    os.remove(os.path.join(download_path, name))
-        
-            # Stop timer.            
-            end_time = timeit.default_timer()
-            utils.print_cyn("This event took %d seconds to download. At this "
-                            "pace you'll be done in about %f hours." % 
-                            (end_time - start_time, 
-                            (num_events - i) * (end_time - start_time) 
-                            / float(TO_SEC)))
-                        
-    utils.print_blu('Done (or skipping) downloading.')
     if with_waveforms:
         return
 
+    # Get stations.
     c = Client("IRIS")
-    for x in stations_filt:
-        
+    for x in stations_filt:        
         station_filename = os.path.join(
-            lasif_stations_path, 'station.%s_%s.xml' % (x.network, x.station))
-            
+            lasif_stations_path, 'station.%s_%s.xml' % (x.network, x.station))            
         if os.path.exists(station_filename):
-            continue
-        
+            continue        
         utils.print_ylw(
             "Downloading StationXML for: %s.%s" % (x.network, x.station))
         try:

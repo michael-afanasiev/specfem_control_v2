@@ -14,7 +14,7 @@ class SeismogramNotFoundError(Exception):
     pass
 
 
-def plot_two(s1, s2, process_s1=False, process_s2=False, plot=True, ax=None,
+def plot_two(s1, s2, process_s1=False, process_s2=True, plot=True, ax=None,
              legend=True, xlabel=None, ylabel=None):
     
     if process_s1:
@@ -36,7 +36,9 @@ def plot_two(s1, s2, process_s1=False, process_s2=False, plot=True, ax=None,
     
     # ax.set_xlabel('Time (m)')
     # ax.set_ylabel('Amplitude (normalized)')
-    ax.set_xlim(0, max(time_s1))
+    if ax == None:
+        ax = plt.gca()
+    ax.set_xlim(0, 40)#max(time_s1))
     ax.set_ylim(ymin, ymax)
     
     # Plot datas.
@@ -48,7 +50,9 @@ def plot_two(s1, s2, process_s1=False, process_s2=False, plot=True, ax=None,
 
     if plot:
         plt.show()
-        raw_input()
+        plt.savefig('seismogram_00_globe.png')
+        
+    
     
 class Seismogram(object):
 
