@@ -284,10 +284,13 @@ def office_plot_random_seismograms(parser, args, params):
     parser.add_argument('--num', type=int,
                         help='File name',
                         metavar='', required=True)
+    parser.add_argument('--two_iterations', action='store_true',
+                        help='Compare two iterations')
     local_args = parser.parse_known_args(args)
     num = local_args[0].num
+    two_iterations = local_args[0].two_iterations
 
-    control.plot_random_seismograms(params, num)
+    control.plot_random_seismograms(params, num, two_iterations)
     
 @command_group("Visualize")
 def office_plot_two_seismograms(parser, args, params):

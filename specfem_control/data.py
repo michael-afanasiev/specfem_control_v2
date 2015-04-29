@@ -74,13 +74,14 @@ def station_statistics(params, station_list):
     sensors = stations_list['SensorDescription']
     locations = stations_list['Location']
     start_times = stations_list['StartTime']
+    end_times = stations_list['EndTime']
     
     print str(len(stations)) + " entries."
     start_times = [obspy.UTCDateTime(x).year for x in start_times]
+    end_times = [obspy.UTCDateTime(x).year for x in end_times]
     
     plt.hist(
-        start_times, bins=range(min(start_times), max(start_times) + 1,
-        1))
+        start_times, bins=range(min(start_times), max(start_times) + 1, 1))
     plt.show()
 
 def download_data(params, station_list, with_waveforms, recording_time, 
@@ -158,15 +159,14 @@ def download_data(params, station_list, with_waveforms, recording_time,
                 level="response", filename=station_filename)
         except:
             utils.print_red("No data for %s" % (station_filename))
-            
+
 def prefilter_data(params):
     """
     Rotates the downloaded data in the "DOWNLOADED" folder. Will fail if no
     StationXML files exist, so make sure you've done this first.
     """
     # Local variables.
-    proper_components = ['BHZ', 'BHE', 'BHN']
-    azi_dict = {'90.0' : 'BHE', '0.0' : 'BHN'}
+    channel_priority = ['LH*', 'BH*']
     lasif_path = params['lasif_path']
     lasif_data_path = os.path.join(params['lasif_path'], 'DOWNLOADED_DATA')
     event_xml_directory = os.path.join(params['lasif_path'], 'EVENTS')
@@ -176,106 +176,23 @@ def prefilter_data(params):
     # Get starttime for event.
     for event in sorted(os.listdir(event_xml_directory)):
         
-        fixed = 0
-        utils.print_ylw("Prefiltering event: " + event[:-4])
-        
-        event_info = os.path.join(event_xml_directory, event)
-        tree = ET.parse(event_info)
-        root = tree.getroot()
-        for tag in root.iter():
-            if tag.tag == XML_STRING + 'time':
-                starttime = obspy.UTCDateTime(
-                    tag.findall(XML_STRING + 'value')[0].text)
-                break
-                    
+        utils.print_ylw("Prefiltering event: " + event[:-4])                    
         download_path = os.path.join(lasif_data_path, event[:-4])
         
         # Make raw data directory in LASIF project normal spot.
         lasif_raw_data_path = os.path.join(
             lasif_path, 'DATA', event[:-4], 'raw')
         utils.mkdir_p(lasif_raw_data_path)
-        if os.path.exists(os.path.join(lasif_raw_data_path, 'data.tar')):
-            print "Data already exists for " + event[:-4] + ". Skipping."
-            continue
-        
-        # Untar.
-        print "Untarring..."
-        tar_path = os.path.join(download_path, 'data.tar')
-        tar = tarfile.open(tar_path)
-        tar.extractall(path=download_path)
-        tar.close()
-        os.remove(tar_path)
 
-        # Get inventory from StationXML.
-        print "Fixing components..."
-        for file_xml in os.listdir(lasif_stations_path):
+        st = obspy.read(os.path.join(download_path, 'data.mseed'))
+        st_filt = obspy.Stream()
+        unique_stations = set([x.stats.station for x in st])
+        for s in unique_stations:
+            station_components = st.select(station=s)
+            for c in channel_priority:
+                if len(station_components.select(channel=c)):
+                    st_filt += station_components.select(channel=c)
+                    break
 
-            # Set up arrays.
-            new_components = []
-            full_station = []
-            traces = []
-
-            # Find names from station file.
-            net_sta = file_xml.split('.')
-            net_xml, sta_xml = net_sta[1].split('_')
-
-            # Find matching data.
-            for file in sorted(os.listdir(download_path)):
-                net, sta = file.split('.')[0:2]
-                if (net == net_xml) and (sta == sta_xml):
-                    full_station.append(os.path.join(download_path, file))
-
-            # Get the data from the three existing components.
-            traces = [obspy.read(file)[0] for file in full_station]
-
-            # Open StationXML file and get inventory.
-            stationXML = os.path.join(lasif_stations_path, file_xml)
-            inv = obspy.read_inventory(stationXML, format='stationxml')
-
-            # Select specific inventory components. Kill those which are not
-            # properly aligned, and rename those which are.
-            for t in traces:
-                if t.stats.channel in proper_components:
-                    new_components.append(t.stats.channel)
-                else:
-                    try:
-                        my_inv = inv.select(
-                            channel=t.stats.channel, station=t.stats.station,
-                            location=t.stats.location, time=t.stats.starttime)
-                        new_components.append(
-                            azi_dict[str(my_inv[0][0][0].azimuth)])
-                        fixed += 1
-                    except:
-                        new_components.append('delete')
-
-            # Write the newly named files to the raw data lasif folder. The
-            # files with a proper N/S orientation should now be called by their
-            # proper names.
-            for chan, trace in zip(new_components, traces):
-                if chan == 'delete':
-                    continue
-                write_name = os.path.join(
-                    lasif_raw_data_path, "%s.%s.%s.%s.mseed" %
-                    (trace.stats.network, trace.stats.station,
-                    trace.stats.location, chan))
-                trace.write(write_name, format='mseed')
-
-        utils.print_cyn("Fixed %d channels." % (fixed))
-        
-        # Retar.
-        print "Tarring downloaded data..."
-        with tarfile.open(tar_path, "w") as tar:
-            for file in os.listdir(download_path):
-                tar.add(os.path.join(download_path, file), arcname=file)
-        for file in os.listdir(download_path):
-            if not file.endswith('.tar'):
-                os.remove(os.path.join(download_path, file))
-                
-        print "Tarring prefiltered data..."
-        rawdata_tar = os.path.join(lasif_raw_data_path, 'data.tar')
-        with tarfile.open(rawdata_tar, "w") as tar:
-            for file in os.listdir(lasif_raw_data_path):
-                tar.add(os.path.join(lasif_raw_data_path, file), arcname=file)
-        for file in os.listdir(lasif_raw_data_path):
-            if not file.endswith('.tar'):
-                os.remove(os.path.join(lasif_raw_data_path, file))        
+        write_filename = os.path.join(lasif_raw_data_path, 'data.mseed')
+        st_filt.write(filename=write_filename, format='mseed')

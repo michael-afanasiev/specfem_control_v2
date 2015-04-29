@@ -109,6 +109,19 @@ def sym_link_directory(source, dest):
         safe_sym_link(os.path.join(source, file), os.path.join(dest, file))
 
 
+def move_directory(source, dest, exc=None, only=None, ends=None):
+    """
+    Recursively copies all files in a 'source' directory.
+    """
+    for file in os.listdir(source):
+        if ends and not file.endswith(ends):
+            continue
+        if exc and file in exc:
+            continue
+        if only and file not in only:
+            continue
+        os.rename(os.path.join(source, file), os.path.join(dest, file))
+
 def copy_directory(source, dest, exc=None, only=None, ends=None):
     """
     Recursively copies all files in a 'source' directory.

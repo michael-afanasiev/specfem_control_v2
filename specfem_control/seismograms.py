@@ -5,8 +5,6 @@ import math
 import utils
 import obspy
 
-
-
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -15,18 +13,23 @@ class SeismogramNotFoundError(Exception):
 
 
 def plot_two(s1, s2, process_s1=False, process_s2=True, plot=True, ax=None,
-             legend=True, xlabel=None, ylabel=None):
+             legend=True, xlabel=None, ylabel=None, third=None):
     
     if process_s1:
         s1.process_synthetics()
     if process_s2:
         s2.process_synthetics()
+    if third:
+        third.process_synthetics()
     
     norm_data_s1 = s1.normalize()
     time_s1 = s1.t / 60.
     
     norm_data_s2 = s2.normalize()
     time_s2 = s2.t / 60.
+
+    norm_data_s3 = third.normalize()
+    time_s3 = third.t / 60.
                 
     ymax = max(np.amax(np.absolute(norm_data_s1)), 
                np.amax(np.absolute(norm_data_s2))) * (1.2)
@@ -38,15 +41,17 @@ def plot_two(s1, s2, process_s1=False, process_s2=True, plot=True, ax=None,
     # ax.set_ylabel('Amplitude (normalized)')
     if ax == None:
         ax = plt.gca()
-    ax.set_xlim(0, 40)#max(time_s1))
+    ax.set_xlim(29, 35)# max(time_s1))
     ax.set_ylim(ymin, ymax)
     
     # Plot datas.
-    ax.plot(time_s1, norm_data_s1, 'k', label=s1.fname)
-    ax.plot(time_s2, norm_data_s2, 'r', label=s2.fname)
-    
+    ax.plot(time_s1, norm_data_s1, 'k', label='Data')#s1.fname)
+    ax.plot(time_s2, norm_data_s2, 'r', label='00_globe')#s2.fname)
+    ax.plot(time_s3, norm_data_s3, 'b', linestyle='-', label='02_globe')#third.fname)
+
+    legend = True
     if legend:    
-        ax.legend()
+        ax.legend(prop={'size':6})
 
     if plot:
         plt.show()

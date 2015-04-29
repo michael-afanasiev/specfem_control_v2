@@ -14,8 +14,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from multiprocessing import Pool, cpu_count
+from itertools import repeat
 
-def _copy_files_and_tar((source, dest)):
+def _copy_files_and_tar((source, dest, tar)):
     
     utils.print_ylw("Moving: " + source.split('/')[-2])
     
@@ -28,9 +29,13 @@ def _copy_files_and_tar((source, dest)):
         utils.mkdir_p(dest)
     
     source_files = [x for x in os.listdir(source) if x.endswith('.sac')]
-    with tarfile.open(tar_name, "w") as tar:
-        for file in source_files:
-            tar.add(os.path.join(source, file), arcname=file)
+
+    if tar:
+        with tarfile.open(tar_name, "w") as tar:
+            for file in source_files:
+                tar.add(os.path.join(source, file), arcname=file)
+    else:
+        utils.move_directory(source, dest, ends='.sac')
             
 def _tar_seismograms(dir):
     
@@ -200,7 +205,7 @@ def _copy_synthetics_for_iteration(params):
     iteration_synthetics = os.path.join(lasif_path, 'SYNTHETICS')
     scratch_synthetics = os.path.join(lasif_scratch_path, 'SYNTHETICS')
     utils.mkdir_p(lasif_scratch_path)
-    rsync_string = "rsync -rav --include=" + iteration_synthetics + "/*/*00_globe_c* --exclude=* " + iteration_synthetics + " " + scratch_synthetics
+    rsync_string = "rsync -rav --include=" + iteration_synthetics + "/*/*01_globe_a --exclude=* " + iteration_synthetics + " " + scratch_synthetics
     subprocess.Popen(
         [rsync_string], shell=True).wait()
 
@@ -250,7 +255,7 @@ def calculate_cumulative_misfit(params):
     iteration_name = params['iteration_name']
     lasif_scratch_path = params['lasif_scratch_path']
     print "Calculating misfit for iteration %s." % (iteration_name)
-    #_copy_synthetics_for_iteration(params)
+    _copy_synthetics_for_iteration(params)
     
     # Get path of this script and .sbatch file.
     this_script = os.path.dirname(os.path.realpath(__file__))
@@ -427,7 +432,7 @@ def _unpack_if_needed(possible_tar_file):
         tar.extractall(path=os.path.dirname(possible_tar_file))
         os.remove(possible_tar_file)
 
-def plot_random_seismograms(params, num):
+def plot_random_seismograms(params, num, two_iterations):
     """
     Plots num randomly selected seismograms.
     """
@@ -442,31 +447,34 @@ def plot_random_seismograms(params, num):
     chosen_events = []
     for i in range(num):
         chosen_events.append(all_events[random.randint(0, num_events)])
-        
-    # Choose one trace per event.
-    chosen_traces = []
-    for e in chosen_events:
-        window_path = os.path.join(
-            lasif_windows_path, e, 'ITERATION_' + iteration_name)
-        all_traces = os.listdir(window_path)
-        chosen_traces.append(
-            all_traces[random.randint(0, len(all_traces)-1)].split('_')[1][:-4])
-            
+
+    # # Choose one trace per event.
+    # chosen_traces = []
+    # for e in chosen_events:
+    #    window_path = os.path.join(
+    #        lasif_windows_path, e, 'ITERATION_' + iteration_name)
+    #    all_traces = os.listdir(window_path)
+    #    chosen_traces.append(
+    #        all_traces[random.randint(0,len(all_traces)-1)].split('_')[1][:-4])
+      
+    chosen_events =['GCMT_event_BERING_SEA_Mag_6.5_2010-4-30-23']
+    chosen_traces = ['II.ESK.MXZ']
     # Find all the synthetics you need.
     chosen_synthetics = []
     for x, e in zip(chosen_traces, chosen_events):
+        for itr in ['00_globe', '01_globe_b']:
         
-        # Check to see if data needs to be untarred.
-        possible_tar_file = os.path.join(
-            lasif_scratch_path, 'SYNTHETICS', e, 'ITERATION_' + iteration_name,
-            'data.tar')
-        # _unpack_if_needed(possible_tar_file)
+            # Check to see if data needs to be untarred.
+            possible_tar_file = os.path.join(
+                lasif_scratch_path, 'SYNTHETICS', e, 'ITERATION_' + itr,
+                'data.tar')
+            # _unpack_if_needed(possible_tar_file)
                     
-        # Add files to list.
-        chosen_synthetics.append(
-            os.path.join(
-                os.path.dirname(possible_tar_file), 
-                '.'.join(x.split('.')[0:2]) + '.MX%s.sem.sac' % (x[-1])))
+            # Add files to list.
+            chosen_synthetics.append(
+                os.path.join(
+                    os.path.dirname(possible_tar_file), 
+                    '.'.join(x.split('.')[0:2]) + '.MX%s.sem.sac' % (x[-1])))
 
     # Find all the data you need.     
     chosen_data = []
@@ -491,28 +499,49 @@ def plot_random_seismograms(params, num):
 
         chosen_data.append(possible_file)
     
-    nrows = 4
-    ncols = 2
+    nrows = 1
+    ncols = 1
     fig, axs = plt.subplots(nrows, ncols, sharex='col', sharey='row', 
                             figsize=(ncols*8, nrows*2.5))
-    for x, y, ax in zip(chosen_data, chosen_synthetics, axs.flat):
+    try:
+        axs_flat = axs.flat
+    except:
+        axs_flat = [axs]
+    
+    print chosen_synthetics
+    for x, y, z, ax in zip(
+        chosen_data, chosen_synthetics[0::2], 
+        chosen_synthetics[1::2], axs_flat):
         plot_two_seismograms(
-            params, x, y, process_s1=False, process_s2=True, 
-            plot=False, ax=ax, legend=False)
+            params, x, y, process_s1=False, process_s2=True, plot=False,
+            ax=ax, legend=False, third=z)
+    
+    # for x, y, ax in zip(chosen_data, chosen_synthetics, axs_flat):
+    #     plot_two_seismograms(
+    #         params, x, y, process_s1=False, process_s2=True,
+    #         plot=False, ax=ax, legend=False)
 
     from string import ascii_lowercase
-    for i, a in enumerate(axs.flat):
+    for i, a in enumerate(axs_flat):
         a.text(0.965, 0.9, ascii_lowercase[i] + ')', transform=a.transAxes)
         
-    for i, row in enumerate(axs):
-        for j, cell in enumerate(row):
-            if i == len(axs) - 1:
-                cell.set_xlabel('Time (m)')
-            if j == 0:
-                cell.set_ylabel('Amplitude (normalized)')
+    if len(axs_flat) > 1:
+        for i, row in enumerate(axs):
+            for j, cell in enumerate(row):
+                if i == len(axs) - 1:
+                    cell.set_xlabel('Time (minutes)')
+                if j == 0:
+                    cell.set_ylabel('Amplitude (normalized)')        
+    else:
+        ax.set_xlabel('Time (minutes)')
+        ax.set_ylabel('Amplitude (normalized)')
 
-    fig.suptitle("Data (black) and synthetics (red)")
+    if not two_iterations:
+        fig.suptitle("Data (black) and synthetics (red)")
+    else:
+        fig.suptitle("Data (black) and synthetics (red/blue)")
     plt.tight_layout()
+    fig.subplots_adjust(top=0.90)
     plt.savefig('seismo.pdf', bbox_inches='tight')
     plt.show()
     
@@ -927,6 +956,7 @@ def process_synthetics(params, first_job, last_job):
     event_list = params['event_list']
     forward_run_dir = params['forward_run_dir']
     lasif_path = params['lasif_path']
+    lasif_scratch_path = params['lasif_scratch_path']
     iteration_name = params['iteration_name']
     chosen_event = event_list[first_job:last_job+1]
     source_dirs = [os.path.join(forward_run_dir, event, 'OUTPUT_FILES') 
@@ -934,11 +964,15 @@ def process_synthetics(params, first_job, last_job):
     dest_dirs = [os.path.join(
         lasif_path, 'SYNTHETICS', event, 'ITERATION_%s' % (iteration_name)) 
         for event in chosen_event]
+    dest_dirs_scratch = [os.path.join(
+        lasif_scratch_path, 'SYNTHETICS', event, 'ITERATION_%s' % (iteration_name))
+        for event in chosen_event]
     
     if __name__ == 'specfem_control.control':
         pool = Pool(processes=cpu_count())
         print "Using %d cpus..." % (cpu_count())
-        pool.map(_copy_files_and_tar, zip(source_dirs, dest_dirs))
+        #pool.map(_copy_files_and_tar, zip(source_dirs, dest_dirs, repeat(True)))
+        pool.map(_copy_files_and_tar, zip(source_dirs, dest_dirs_scratch, repeat(False)))
         
     utils.print_blu('Done.')
             
@@ -973,11 +1007,14 @@ def plot_seismogram(params, file_name):
     
 def plot_two_seismograms(
     params, file_1, file_2, process_s1=False, process_s2=True, ax=None, 
-    plot=True, legend=True):
+    plot=True, legend=True, third=None):
     """
     Plots two sesimograms on top of each other.
     """
     s1 = seismograms.Seismogram(file_1)
     s2 = seismograms.Seismogram(file_2)
+    s3 = None
+    if third:
+        s3 = seismograms.Seismogram(third)
     seismograms.plot_two(s1, s2, process_s1=process_s1, process_s2=process_s2,
-        ax=ax, plot=plot, legend=legend)
+        ax=ax, plot=plot, legend=legend, third=s3)

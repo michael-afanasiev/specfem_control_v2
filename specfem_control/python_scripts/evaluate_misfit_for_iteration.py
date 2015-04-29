@@ -23,7 +23,7 @@ def _evaluate_misfits_run((event, iteration)):
         for window in range(
             len(proj.comm.windows.get(event, iteration).get(trace).windows)):
             skip = False
-            for i in ['00_globe', '00_globe_a', '00_globe_b', '00_globe_c', '00_globe_d', '01_globe']:
+            for i in ['01_globe', '01_globe_a', '01_globe_b']:
                 try:
                     proj.comm.windows.get(event, i).get(trace).windows[window].misfit_value
                 except:
@@ -32,8 +32,9 @@ def _evaluate_misfits_run((event, iteration)):
             if skip:
                 continue
             try:
-                misfit += proj.comm.windows.get(
+                misfit = proj.comm.windows.get(
                     event, iteration).get(trace).windows[window].misfit_value
+                print misfit
                 passed += 1
             except:
                 print proj.comm.windows.get(
@@ -55,7 +56,7 @@ event_list = sorted(master.comm.iterations.get(iteration).events.keys())
 
 # Farm out misfit evaluation to all cores.
 print "Running in parallel on %d cores." % (cpu_count())
-pool = Pool(processes=cpu_count())
+pool = Pool(processes=1)#cpu_count())
 misfits_and_windows = pool.map(
     _evaluate_misfits_run, zip(event_list, repeat(iteration)))
 
