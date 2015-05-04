@@ -4,7 +4,6 @@ import os
 import sys
 import utils
 import argparse
-import xml.etree.ElementTree as ET
 
 import control
 
@@ -80,7 +79,7 @@ def office_submit_solver(parser, args, params):
                         metavar='', required=True)
     parser.add_argument('--run_type', type=str,
                         help='Specify either adjoint_run, forward_run, or '
-                            'line_search.',
+                        'line_search.',
                         metavar='', required=True)
 
     local_args = parser.parse_known_args(args)
@@ -89,7 +88,7 @@ def office_submit_solver(parser, args, params):
     run_type = local_args[0].run_type
 
     if run_type != 'adjoint_run' and run_type != 'forward_run' and run_type \
-        != 'line_search':
+            != 'line_search':
         raise ParameterError("Must specifiy either forward_run or "
                              "adjoint_run")
 
@@ -239,7 +238,8 @@ def office_generate_kernel_vtk(parser, args, params):
     num_slices = local_args[0].num_slices
 
     control.generate_kernel_vtk(params, num_slices)
-    
+
+
 @command_group("Visualize")
 def office_generate_model_vtk(parser, args, params):
     """
@@ -253,6 +253,7 @@ def office_generate_model_vtk(parser, args, params):
     num_slices = local_args[0].num_slices
 
     control.generate_model_vtk(params, num_slices)
+
 
 @command_group("Setup")
 def office_delete_adjoint_sources_for_iteration(parser, args, params):
@@ -277,7 +278,8 @@ def office_plot_seismogram(parser, args, params):
     file_name = local_args[0].file_name
 
     control.plot_seismogram(params, file_name)
-    
+
+
 @command_group("Visualize")
 def office_plot_random_seismograms(parser, args, params):
     """
@@ -293,7 +295,8 @@ def office_plot_random_seismograms(parser, args, params):
     two_iterations = local_args[0].two_iterations
 
     control.plot_random_seismograms(params, num, two_iterations)
-    
+
+
 @command_group("Visualize")
 def office_plot_two_seismograms(parser, args, params):
     """
@@ -310,7 +313,8 @@ def office_plot_two_seismograms(parser, args, params):
     file_2 = local_args[0].file_2
 
     control.plot_two_seismograms(params, file_1, file_2)
-    
+
+
 @command_group("Data")
 def office_process_synthetics(parser, args, params):
     """
@@ -324,9 +328,10 @@ def office_process_synthetics(parser, args, params):
     local_args = parser.parse_known_args(args)
     first_job = local_args[0].fj
     last_job = local_args[0].lj
-        
+
     control.process_synthetics(params, first_job, last_job)
-    
+
+
 @command_group("Data")
 def office_lasif_preprocess_data(parser, args, params):
     """
@@ -336,28 +341,31 @@ def office_lasif_preprocess_data(parser, args, params):
                         metavar='', required=True)
     parser.add_argument('-lj', type=int, help='Last event to submit.',
                         metavar='', required=True)
-    
+
     local_args = parser.parse_known_args(args)
     first_job = local_args[0].fj
     last_job = local_args[0].lj
-    
+
     control.lasif_preprocess_data(params, first_job, last_job)
-   
+
+
 @command_group("Data")
 def office_pack_up_all_seismograms(parser, args, params):
     """
     Cleans up any hanging .mseed or .sac files.
     """
-    local_args = parser.parse_known_args(args)
+    parser.parse_known_args(args)
     control.pack_up_all_seismograms(params)
+
 
 @command_group("Data")
 def office_calculate_cumulative_misfit(parser, args, params):
     """
     Calculates the cumulative misfit for an iteration.
     """
-    local_args = parser.parse_known_args(args)
-    control.calculate_cumulative_misfit(params)    
+    parser.parse_known_args(args)
+    control.calculate_cumulative_misfit(params)
+
 
 @command_group("Optimization")
 def office_get_quadratic_steplength(parser, args, params):
@@ -366,11 +374,11 @@ def office_get_quadratic_steplength(parser, args, params):
     """
     parser.add_argument('p1x', metavar='p1x', type=float, nargs=1)
     parser.add_argument('p1y', metavar='p1y', type=float, nargs=1)
-    parser.add_argument('p2x', metavar='p2x', type=float, nargs=1)    
-    parser.add_argument('p2y', metavar='p2y', type=float, nargs=1)    
-    parser.add_argument('p3x', metavar='p3x', type=float, nargs=1)    
-    parser.add_argument('p3y', metavar='p3y', type=float, nargs=1)    
-    
+    parser.add_argument('p2x', metavar='p2x', type=float, nargs=1)
+    parser.add_argument('p2y', metavar='p2y', type=float, nargs=1)
+    parser.add_argument('p3x', metavar='p3x', type=float, nargs=1)
+    parser.add_argument('p3y', metavar='p3y', type=float, nargs=1)
+
     local_args = parser.parse_known_args(args[1:])
     p1 = local_args[0].p1x[0]
     m1 = local_args[0].p1y[0]
@@ -378,19 +386,20 @@ def office_get_quadratic_steplength(parser, args, params):
     m2 = local_args[0].p2y[0]
     p3 = local_args[0].p3x[0]
     m3 = local_args[0].p3y[0]
-    
+
     control.get_quadratic_steplength(p1, m1, p2, m2, p3, m3)
+
 
 @command_group("Data")
 def office_download_data(parser, args, params):
-    """ 
+    """
     Downloads data from IRIS.
     """
     parser.add_argument(
         '--station_list', type=str, help='Station file from IRIS',
         required=True, metavar='x')
     parser.add_argument(
-        '--recording_time', type=int, 
+        '--recording_time', type=int,
         help='Recording time from event start (seconds)', metavar='x',
         required=True)
     parser.add_argument(
@@ -400,40 +409,43 @@ def office_download_data(parser, args, params):
     parser.add_argument(
         '--with_waveforms', action='store_true',
         help='Download waveform data (instead of just station data)')
-    
+
     local_args = parser.parse_known_args(args)
-    
+
     station_list = local_args[0].station_list
     with_waveforms = local_args[0].with_waveforms
     padding_time = local_args[0].padding_time
     recording_time = local_args[0].recording_time
     control.download_data(params, station_list, with_waveforms, recording_time,
                           padding_time)
- 
+
+
 @command_group("Data")
 def office_station_statistics(parser, args, params):
     """
-    Looks through the station_list file and makes some statistics on the data. 
+    Looks through the station_list file and makes some statistics on the data.
     Helpful for deciding downloading parameters.
-    """   
+    """
     parser.add_argument(
         '--station_list', type=str, help='Station file from IRIS',
         required=True, metavar='x')
-    
+
     local_args = parser.parse_known_args(args)
-    
+
     station_list = local_args[0].station_list
     control.station_statistics(params, station_list)
+
+
 @command_group("Data")
 def office_prefilter_data(parser, args, params):
     """
     Rotates the downloaded data in the "DOWNLOADED" folder. Will fail if no
     StationXML files exist, so make sure you've done this first.
     """
-    local_args = parser.parse_known_args(args)
-    
+    parser.parse_known_args(args)
     control.prefilter_data(params)
-    
+
+
 def _read_parameter_file():
     """
     Reads the parameter file and populates the parameter dictionary.
@@ -476,7 +488,7 @@ def _read_parameter_file():
         parameters['scratch_path'],
         os.path.basename(
             parameters['lasif_path']))
-    
+
     # Initialize lasif project.
     try:
         master = project.Project(
@@ -510,12 +522,13 @@ def _read_parameter_file():
     parameters.update({'lasif_communicator': master})
     parameters.update({'lowpass_f': lowpass})
     parameters.update({'highpass_f': highpass})
-    parameters.update({'lowpass_p': 1/lowpass})
-    parameters.update({'highpass_p': 1/highpass})
+    parameters.update({'lowpass_p': 1 / lowpass})
+    parameters.update({'highpass_p': 1 / highpass})
     parameters.update({'dt': dt})
     parameters.update({'npts': npts})
-    
+
     return parameters
+
 
 def _get_cmd_description(fct):
     """

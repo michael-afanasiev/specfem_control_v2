@@ -11,21 +11,21 @@ Project specific function processing observed data.
 """
 import numpy as np
 import obspy
-from obspy.xseed import Parser
-from scipy import signal
-import warnings
 import sys
 import os
 
 from lasif import LASIFError
+from scipy import signal
 
-directory   = sys.argv[1]
-event       = sys.argv[2]
-freqmin     = float(sys.argv[3])
-freqmax     = float(sys.argv[4])
+# Command line arguments
+directory = sys.argv[1]
+event = sys.argv[2]
+freqmin = float(sys.argv[3])
+freqmax = float(sys.argv[4])
 origin_time = obspy.UTCDateTime(sys.argv[5])
-dt          = float(sys.argv[6])
-npts        = int(sys.argv[7])
+dt = float(sys.argv[6])
+npts = int(sys.argv[7])
+
 
 def zerophase_chebychev_lowpass_filter(trace, freqmax):
     """
@@ -59,7 +59,7 @@ def zerophase_chebychev_lowpass_filter(trace, freqmax):
     trace.data = signal.filtfilt(b, a, trace.data)
 
 # Read seismograms and gather basic information.
-specfem_delta_delay = -1.0687500 
+specfem_delta_delay = -1.0687500
 starttime = origin_time + specfem_delta_delay
 endtime = starttime + dt * npts - 1
 duration = endtime - starttime
@@ -96,7 +96,7 @@ for tr in st:
     # =========================================================================
     chebyfail = False
     while True:
-    
+
         decimation_factor = int(dt / tr.stats.delta)
         # Decimate in steps for large sample rate reductions.
         if decimation_factor > 8:
@@ -160,7 +160,6 @@ for tr in st:
             % (station_file, e.__repr__()),
         continue
 
-
     # =========================================================================
     # Step 5: Interpolation
     # =========================================================================
@@ -189,13 +188,14 @@ for tr in st:
     tr.data = np.require(tr.data, dtype="float32", requirements="C")
     if hasattr(tr.stats, "mseed"):
         tr.stats.mseed.encoding = "FLOAT32"
-    
-    # Add trace to processed stream 
+
+    # Add trace to processed stream
     processed_st += tr
-      
+
 # Save processed stream. Make directory if it does not exist.
 processed_dir = os.path.join(
-    directory, 'DATA', event, 'preprocessed_%s_%s'  % (1/freqmax, 1/freqmin))
+    directory, 'DATA', event, 'preprocessed_%s_%s' %
+    (1 / freqmax, 1 / freqmin))
 if not os.path.exists(processed_dir):
     os.mkdir(processed_dir)
 processed_st.write(

@@ -16,18 +16,20 @@ import matplotlib.pyplot as plt
 from multiprocessing import Pool, cpu_count
 from itertools import repeat
 
-def _copy_files_and_tar((source, dest, tar)):
-    
+
+def _copy_files_and_tar(xxx_todo_changeme):
+
+    (source, dest, tar) = xxx_todo_changeme
     utils.print_ylw("Moving: " + source.split('/')[-2])
-    
+
     tar_name = os.path.join(dest, 'data.tar')
 
     if os.path.exists(tar_name):
         os.remove(tar_name)
-        
+
     if not os.path.exists(dest):
         utils.mkdir_p(dest)
-    
+
     source_files = [x for x in os.listdir(source) if x.endswith('.sac')]
 
     if tar:
@@ -36,30 +38,28 @@ def _copy_files_and_tar((source, dest, tar)):
                 tar.add(os.path.join(source, file), arcname=file)
     else:
         utils.move_directory(source, dest, ends='.sac')
-            
+
+
 def _tar_seismograms(dir):
-    
+
     utils.print_ylw("Tarring: " + dir + "...")
-    
+
     tar_files = []
     tar_name = os.path.join(dir, "data.tar")
     for file in os.listdir(dir):
         if file != "data.tar":
             tar_files.append(os.path.join(dir, file))
-    
+
     if not tar_files:
         return
-    
+
     with tarfile.open(tar_name, "w") as tar:
         for file in tar_files:
             tar.add(file, arcname=os.path.basename(file))
-            
+
     for file in tar_files:
         os.remove(file)
-        
-def _untar_seismograms(dir):
-    tar_name = os.path.join(dir, "data.tar")
-    
+
 
 def _setup_dir_tree(event, forward_run_dir):
     """
@@ -141,7 +141,7 @@ def _change_job_and_par_file(params, run_type):
                 fields = line.split('=')
                 if len(fields) == 1:
                     new_file.write(line)
-                    continue                
+                    continue
                 if 'SIMULATION_TYPE' in fields[0]:
                     new_file.write(fields[0] + simulation_type + fields[1][2:])
                 elif 'SAVE_FORWARD' in fields[0]:
@@ -173,43 +173,45 @@ def _change_job_and_par_file(params, run_type):
     new_job_array.close()
     os.remove(job_array)
     os.rename(new_job_array_name, job_array)
-    
+
+
 def _copy_relevant_lasif_files(params):
     """
-    Rsyncs the CACHE, EVENTS, FUNCTIONS, INTERATIONS, OUTPUT, STATIONS, 
+    Rsyncs the CACHE, EVENTS, FUNCTIONS, INTERATIONS, OUTPUT, STATIONS,
     directories in LASIF to /scratch.
     """
     lasif_path = params['lasif_path']
     lasif_scratch_path = params['lasif_scratch_path']
-    
+
     utils.mkdir_p(lasif_scratch_path)
-    
+
     # Copy directory tree.
     subprocess.Popen(
-        ["rsync -av --include='*/' --exclude='*' " + lasif_path + "/ " 
-         + lasif_scratch_path], shell=True).wait()
-    
+        ["rsync -av --include='*/' --exclude='*' " + lasif_path + "/ " +
+         lasif_scratch_path], shell=True).wait()
+
     folders = ['CACHE', 'STATIONS', 'EVENTS', 'FUNCTIONS', 'ITERATIONS',
-               'OUTPUT', 'config.xml', 'LOGS', 'MODELS'] 
-    
+               'OUTPUT', 'config.xml', 'LOGS', 'MODELS']
+
     for folder in folders:
-        subprocess.Popen(['rsync', '-av', os.path.join(lasif_path, folder), 
-                         lasif_scratch_path]).wait()
+        subprocess.Popen(['rsync', '-av', os.path.join(lasif_path, folder),
+                          lasif_scratch_path]).wait()
+
 
 def _copy_synthetics_for_iteration(params):
-    
+
     lasif_path = params['lasif_path']
     lasif_scratch_path = params['lasif_scratch_path']
-    iteration_name = params['iteration_name']
-    
+
     iteration_synthetics = os.path.join(lasif_path, 'SYNTHETICS')
     scratch_synthetics = os.path.join(lasif_scratch_path, 'SYNTHETICS')
     utils.mkdir_p(lasif_scratch_path)
-    rsync_string = "rsync -rav --include=" + iteration_synthetics + "/*/*01_globe_a --exclude=* " + iteration_synthetics + " " + scratch_synthetics
+    rsync_string = "rsync -rav --include=" + iteration_synthetics + \
+        "/*/*01_globe_a --exclude=* " + iteration_synthetics + " " + \
+        scratch_synthetics
     subprocess.Popen(
         [rsync_string], shell=True).wait()
 
-        
 
 def get_quadratic_steplength(p1, m1, p2, m2, p3, m3):
     """
@@ -220,21 +222,21 @@ def get_quadratic_steplength(p1, m1, p2, m2, p3, m3):
     A = np.matrix([[p1**2, p1, 1],
                    [p2**2, p2, 1],
                    [p3**2, p3, 1]])
-    
+
     # Define right hand side (y-values).
     rhs = np.matrix([[m1],
                      [m2],
                      [m3]])
-                     
+
     # Solve linear system for coefficients.
     a, b, c = np.linalg.solve(A, rhs).flat
-    
+
     # Minimum where dy/dx = 0.
-    minimum = -b / (2*a)
-    min_fit = a*minimum**2 + b*minimum + c
+    minimum = -b / (2 * a)
+    min_fit = a * minimum**2 + b * minimum + c
     print "Minimum in the quadratic approximation: " + str(minimum)
     print "Estimated misfit value at minimum: " + str(min_fit)
-    
+
     # Plot
     minplot = minimum - 0.1
     maxplot = minimum + 0.1
@@ -246,7 +248,7 @@ def get_quadratic_steplength(p1, m1, p2, m2, p3, m3):
     plt.ylabel("Misfit")
     plt.xlim(minplot, maxplot)
     plt.show()
-    
+
 
 def calculate_cumulative_misfit(params):
     """
@@ -256,7 +258,7 @@ def calculate_cumulative_misfit(params):
     lasif_scratch_path = params['lasif_scratch_path']
     print "Calculating misfit for iteration %s." % (iteration_name)
     _copy_synthetics_for_iteration(params)
-    
+
     # Get path of this script and .sbatch file.
     this_script = os.path.dirname(os.path.realpath(__file__))
     sbatch_file = os.path.join(this_script, 'sbatch_scripts',
@@ -421,28 +423,29 @@ def submit_mesher(params, run_type):
     utils.print_ylw("Cleaning old mesh files...")
     for file in os.listdir("DATABASES_MPI"):
         os.remove(os.path.join("DATABASES_MPI", file))
-    
+
     subprocess.Popen(['sbatch', 'job_mesher_daint.sbatch']).wait()
-    
+
+
 def _unpack_if_needed(possible_tar_file):
-    
+
     if os.path.exists(possible_tar_file):
         utils.print_ylw("Unpacking %s..." % (possible_tar_file))
         tar = tarfile.open(possible_tar_file)
         tar.extractall(path=os.path.dirname(possible_tar_file))
         os.remove(possible_tar_file)
 
+
 def plot_random_seismograms(params, num, two_iterations):
     """
     Plots num randomly selected seismograms.
     """
     lasif_scratch_path = params['lasif_scratch_path']
-    iteration_name = params['iteration_name']
     lasif_windows_path = os.path.join(
         lasif_scratch_path, 'ADJOINT_SOURCES_AND_WINDOWS', 'WINDOWS')
     all_events = sorted(os.listdir(lasif_windows_path))
     num_events = len(all_events)
-    
+
     # Choose random events
     chosen_events = []
     for i in range(num):
@@ -456,66 +459,66 @@ def plot_random_seismograms(params, num, two_iterations):
     #    all_traces = os.listdir(window_path)
     #    chosen_traces.append(
     #        all_traces[random.randint(0,len(all_traces)-1)].split('_')[1][:-4])
-      
-    chosen_events =['GCMT_event_BERING_SEA_Mag_6.5_2010-4-30-23']
+
+    chosen_events = ['GCMT_event_BERING_SEA_Mag_6.5_2010-4-30-23']
     chosen_traces = ['II.ESK.MXZ']
     # Find all the synthetics you need.
     chosen_synthetics = []
     for x, e in zip(chosen_traces, chosen_events):
         for itr in ['00_globe', '01_globe_b']:
-        
+
             # Check to see if data needs to be untarred.
             possible_tar_file = os.path.join(
                 lasif_scratch_path, 'SYNTHETICS', e, 'ITERATION_' + itr,
                 'data.tar')
             # _unpack_if_needed(possible_tar_file)
-                    
+
             # Add files to list.
             chosen_synthetics.append(
                 os.path.join(
-                    os.path.dirname(possible_tar_file), 
+                    os.path.dirname(possible_tar_file),
                     '.'.join(x.split('.')[0:2]) + '.MX%s.sem.sac' % (x[-1])))
 
-    # Find all the data you need.     
+    # Find all the data you need.
     chosen_data = []
     for x, e in zip(chosen_traces, chosen_events):
-        
+
         # Check to see if data needs to be untarred.
         possible_tar_file = os.path.join(
-            lasif_scratch_path, 'DATA', e, 
+            lasif_scratch_path, 'DATA', e,
             'preprocessed_hp_0.00833_lp_0.01667_npts_38850_dt_0.142500',
             'data.tar')
         _unpack_if_needed(possible_tar_file)
-        
+
         possible_file = os.path.join(
-                lasif_scratch_path, 'DATA', e, 
-                'preprocessed_hp_0.00833_lp_0.01667_npts_38850_dt_0.142500', 
-                '.'.join(x.split('.')[0:2]) + '.00.BH%s.mseed' % (x[-1]))
+            lasif_scratch_path, 'DATA', e,
+            'preprocessed_hp_0.00833_lp_0.01667_npts_38850_dt_0.142500',
+            '.'.join(x.split('.')[0:2]) + '.00.BH%s.mseed' % (x[-1]))
         if not os.path.exists(possible_file):
             possible_file = os.path.join(
-                    lasif_scratch_path, 'DATA', e, 
-                    'preprocessed_hp_0.00833_lp_0.01667_npts_38850_dt_0.142500', 
-                    '.'.join(x.split('.')[0:2]) + '..BH%s.mseed' % (x[-1]))            
+                lasif_scratch_path, 'DATA', e,
+                'preprocessed_hp_0.00833_lp_0.01667_npts_38850_dt_0.142500',
+                '.'.join(x.split('.')[0:2]) + '..BH%s.mseed' % (x[-1]))
 
         chosen_data.append(possible_file)
-    
+
     nrows = 1
     ncols = 1
-    fig, axs = plt.subplots(nrows, ncols, sharex='col', sharey='row', 
-                            figsize=(ncols*8, nrows*2.5))
+    fig, axs = plt.subplots(nrows, ncols, sharex='col', sharey='row',
+                            figsize=(ncols * 8, nrows * 2.5))
     try:
         axs_flat = axs.flat
     except:
         axs_flat = [axs]
-    
+
     print chosen_synthetics
     for x, y, z, ax in zip(
-        chosen_data, chosen_synthetics[0::2], 
-        chosen_synthetics[1::2], axs_flat):
+            chosen_data, chosen_synthetics[0::2],
+            chosen_synthetics[1::2], axs_flat):
         plot_two_seismograms(
             params, x, y, process_s1=False, process_s2=True, plot=False,
             ax=ax, legend=False, third=z)
-    
+
     # for x, y, ax in zip(chosen_data, chosen_synthetics, axs_flat):
     #     plot_two_seismograms(
     #         params, x, y, process_s1=False, process_s2=True,
@@ -524,14 +527,14 @@ def plot_random_seismograms(params, num, two_iterations):
     from string import ascii_lowercase
     for i, a in enumerate(axs_flat):
         a.text(0.965, 0.9, ascii_lowercase[i] + ')', transform=a.transAxes)
-        
+
     if len(axs_flat) > 1:
         for i, row in enumerate(axs):
             for j, cell in enumerate(row):
                 if i == len(axs) - 1:
                     cell.set_xlabel('Time (minutes)')
                 if j == 0:
-                    cell.set_ylabel('Amplitude (normalized)')        
+                    cell.set_ylabel('Amplitude (normalized)')
     else:
         ax.set_xlabel('Time (minutes)')
         ax.set_ylabel('Amplitude (normalized)')
@@ -544,9 +547,10 @@ def plot_random_seismograms(params, num, two_iterations):
     fig.subplots_adjust(top=0.90)
     plt.savefig('seismo.pdf', bbox_inches='tight')
     plt.show()
-    
+
     for x, y in zip(chosen_synthetics, chosen_data):
         print x, y
+
 
 def submit_window_selection(params, first_job, last_job):
     """
@@ -657,12 +661,12 @@ def sum_kernels(params, first_job, last_job):
     os.chdir(this_script)
     subprocess.Popen(['sbatch', sbatch_file, optimization_dir]).wait()
 
+
 def lasif_preprocess_data(params, first_job, last_job):
     """
     Calls the lasif preprocessing function.
     """
     lasif_scratch_path = params['lasif_scratch_path']
-    iteration_name = params['iteration_name']
     lasif_project_path = params['lasif_path']
     lowpass_f = params['lowpass_f']
     highpass_f = params['highpass_f']
@@ -670,9 +674,9 @@ def lasif_preprocess_data(params, first_job, last_job):
     dt = params['dt']
     npts = params['npts']
     communicator = params['lasif_communicator']
-    
+
     _copy_relevant_lasif_files(params)
-    
+
     # Get path of this script and .sbatch file.
     this_script = os.path.dirname(os.path.realpath(__file__))
     sbatch_file = os.path.join(
@@ -680,13 +684,14 @@ def lasif_preprocess_data(params, first_job, last_job):
 
     # Change to the directory above this script, and submit the job.
     os.chdir(this_script)
-    
-    for event in event_list[first_job:last_job+1]:
+
+    for event in event_list[first_job:last_job + 1]:
         starttime = communicator.comm.events.get(event)['origin_time']
         subprocess.Popen(
-            ['sbatch', sbatch_file, lasif_scratch_path, event, str(highpass_f), 
-            str(lowpass_f), str(starttime), str(dt), str(npts), 
-            lasif_project_path]).wait()
+            ['sbatch', sbatch_file, lasif_scratch_path, event, str(highpass_f),
+             str(lowpass_f), str(starttime), str(dt), str(npts),
+             lasif_project_path]).wait()
+
 
 def smooth_kernels(params, horizontal_smoothing, vertical_smoothing):
     """
@@ -827,6 +832,7 @@ def clean_failed(params):
             os.remove(os.path.join(forward_run_dir, dir, 'core'))
     utils.print_blu('Done.')
 
+
 def pack_up_all_seismograms(params):
     """
     Goes through the /project directory and packs up any loose seismograms.
@@ -835,12 +841,10 @@ def pack_up_all_seismograms(params):
     lasif_scratch_path = params['lasif_scratch_path']
 
     data_path_1 = os.path.join(lasif_path, 'DATA')
-    data_path_2 = os.path.join(lasif_scratch_path, 'DATA')
     synthetic_path_1 = os.path.join(lasif_path, 'SYNTHETICS')
-    synthetic_path_2 = os.path.join(lasif_scratch_path, 'SYNTHETICS')
-    
-    for data_path in [data_path_1]:#, data_path_2]:
-    
+
+    for data_path in [data_path_1]:  # , data_path_2]:
+
         # Data.
         tar_dirs = []
         for dir in sorted(os.listdir(data_path)):
@@ -849,14 +853,14 @@ def pack_up_all_seismograms(params):
                 if not os.path.isdir(sub_dir_path):
                     continue
                 tar_dirs.append(sub_dir_path)
-    
+
         if __name__ == "specfem_control.control":
             pool = Pool(processes=cpu_count())
             print "Using %d cpus..." % (cpu_count())
             pool.map(_tar_seismograms, tar_dirs)
-        
-    for synthetic_path in [synthetic_path_1]:#, synthetic_path_2]:
-        
+
+    for synthetic_path in [synthetic_path_1]:  # , synthetic_path_2]:
+
         # Synthetics.
         tar_dirs = []
         for dir in sorted(os.listdir(synthetic_path)):
@@ -865,12 +869,13 @@ def pack_up_all_seismograms(params):
                 if not os.path.isdir(sub_dir_path):
                     continue
                 tar_dirs.append(sub_dir_path)
-        
+
         if __name__ == "specfem_control.control":
             pool = Pool(processes=cpu_count())
             print "Using %d cpus..." % (cpu_count())
             pool.map(_tar_seismograms, tar_dirs)
-        
+
+
 def generate_kernel_vtk(params, num_slices):
     """
     Generates .vtk files for the smoothed and summed kernels, and puts them
@@ -891,31 +896,33 @@ def generate_kernel_vtk(params, num_slices):
     # Change to the directory above this script, and submit the job.
     os.chdir(this_script)
     subprocess.Popen(['sbatch', sbatch_file, optimization_dir]).wait()
-    
+
+
 def generate_model_vtk(params, num_slices):
     """
     Generates .vtk files for the model, and puts them
     in the mesh/VTK_FILES directory.
     """
     mesh_dir = os.path.join(params['forward_run_dir'], 'mesh')
-    
+
     # Make VTK folder.
     utils.mkdir_p(os.path.join(mesh_dir, 'VTK_FILES'))
-    
+
     # Write slices file.
     with open(os.path.join(mesh_dir, 'VTK_FILES',
                            'SLICES_ALL.txt'), 'w') as f:
         for i in range(0, num_slices):
             f.write(str(i) + '\n')
-            
+
     # Get path of this script and .sbatch file.
     this_script = os.path.dirname(os.path.realpath(__file__))
     sbatch_file = os.path.join(this_script, 'sbatch_scripts',
                                'job_generate_model_vtk.sbatch')
-        
+
     # Change to the directory above this script, and submit the job.
     os.chdir(this_script)
     subprocess.Popen(['sbatch', sbatch_file, mesh_dir]).wait()
+
 
 def delete_adjoint_sources_for_iteration(params):
     """
@@ -945,61 +952,85 @@ def delete_adjoint_sources_for_iteration(params):
         if iteration_name and 'adjoint_sources' in dir:
             shutil.rmtree(os.path.join(lasif_scratch_dir_output, dir))
     for dir in os.listdir(lasif_scratch_dir_adjoint):
-        for sub_dir in os.listdir(os.path.join(lasif_scratch_dir_adjoint, dir)):
-            shutil.rmtree(os.path.join(lasif_scratch_dir_adjoint, dir, sub_dir))            
+        for sub_dir in os.listdir(
+            os.path.join(
+                lasif_scratch_dir_adjoint,
+                dir)):
+            shutil.rmtree(
+                os.path.join(
+                    lasif_scratch_dir_adjoint,
+                    dir,
+                    sub_dir))
 
     utils.print_ylw("Cleaning LASIF project...")
     for dir in os.listdir(lasif_dir_output):
         if iteration_name and 'adjoint_sources' in dir:
             shutil.rmtree(os.path.join(lasif_dir_output, dir))
     for dir in os.listdir(lasif_project_dir_adjoint):
-        for sub_dir in os.listdir(os.path.join(lasif_project_dir_adjoint, dir)):
-            shutil.rmtree(os.path.join(lasif_project_dir_adjoint, dir, sub_dir))            
+        for sub_dir in os.listdir(
+            os.path.join(
+                lasif_project_dir_adjoint,
+                dir)):
+            shutil.rmtree(
+                os.path.join(
+                    lasif_project_dir_adjoint,
+                    dir,
+                    sub_dir))
 
     utils.print_blu('Done.')
-    
+
+
 def process_synthetics(params, first_job, last_job):
     """
     Processes the synthetic seismograms in parallel.
     """
-        
+
     event_list = params['event_list']
     forward_run_dir = params['forward_run_dir']
     lasif_path = params['lasif_path']
     lasif_scratch_path = params['lasif_scratch_path']
     iteration_name = params['iteration_name']
-    chosen_event = event_list[first_job:last_job+1]
-    source_dirs = [os.path.join(forward_run_dir, event, 'OUTPUT_FILES') 
+    chosen_event = event_list[first_job:last_job + 1]
+    source_dirs = [os.path.join(forward_run_dir, event, 'OUTPUT_FILES')
                    for event in chosen_event]
     dest_dirs = [os.path.join(
-        lasif_path, 'SYNTHETICS', event, 'ITERATION_%s' % (iteration_name)) 
+        lasif_path, 'SYNTHETICS', event, 'ITERATION_%s' % (iteration_name))
         for event in chosen_event]
-    dest_dirs_scratch = [os.path.join(
-        lasif_scratch_path, 'SYNTHETICS', event, 'ITERATION_%s' % (iteration_name))
-        for event in chosen_event]
-    
+    dest_dirs_scratch = [
+        os.path.join(
+            lasif_scratch_path,
+            'SYNTHETICS',
+            event,
+            'ITERATION_%s' %
+            (iteration_name)) for event in chosen_event]
+
     if __name__ == 'specfem_control.control':
         pool = Pool(processes=cpu_count())
         print "Using %d cpus..." % (cpu_count())
         #pool.map(_copy_files_and_tar, zip(source_dirs, dest_dirs, repeat(True)))
-        pool.map(_copy_files_and_tar, zip(source_dirs, dest_dirs_scratch, repeat(False)))
-        
+        pool.map(
+            _copy_files_and_tar, zip(
+                source_dirs, dest_dirs_scratch, repeat(False)))
+
     utils.print_blu('Done.')
-            
-def download_data(params, station_list, with_waveforms, recording_time, 
+
+
+def download_data(params, station_list, with_waveforms, recording_time,
                   padding_time):
     """
     Downloads data from IRIS.
-    """ 
-    data.download_data(params, station_list, with_waveforms, recording_time, 
-                       padding_time)    
+    """
+    data.download_data(params, station_list, with_waveforms, recording_time,
+                       padding_time)
+
 
 def station_statistics(params, station_list):
     """
-    Looks through the station_list file and makes some statistics on the data. 
+    Looks through the station_list file and makes some statistics on the data.
     Helpful for deciding downloading parameters.
-    """   
-    data.station_statistics(params, station_list)    
+    """
+    data.station_statistics(params, station_list)
+
 
 def prefilter_data(params):
     """
@@ -1008,16 +1039,18 @@ def prefilter_data(params):
     """
     data.prefilter_data(params)
 
+
 def plot_seismogram(params, file_name):
     """
     Plots a single seismogram.
     """
     seismogram = seismograms.Seismogram(file_name)
     seismogram.plot_seismogram()
-    
+
+
 def plot_two_seismograms(
-    params, file_1, file_2, process_s1=False, process_s2=True, ax=None, 
-    plot=True, legend=True, third=None):
+        params, file_1, file_2, process_s1=False, process_s2=True, ax=None,
+        plot=True, legend=True, third=None):
     """
     Plots two sesimograms on top of each other.
     """
@@ -1027,4 +1060,4 @@ def plot_two_seismograms(
     if third:
         s3 = seismograms.Seismogram(third)
     seismograms.plot_two(s1, s2, process_s1=process_s1, process_s2=process_s2,
-        ax=ax, plot=plot, legend=legend, third=s3)
+                         ax=ax, plot=plot, legend=legend, third=s3)
