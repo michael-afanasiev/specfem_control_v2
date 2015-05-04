@@ -664,6 +664,12 @@ def lasif_preprocess_data(params, first_job, last_job):
     lasif_scratch_path = params['lasif_scratch_path']
     iteration_name = params['iteration_name']
     lasif_project_path = params['lasif_path']
+    lowpass_f = params['lowpass_f']
+    highpass_f = params['highpass_f']
+    event_list = params['event_list']
+    dt = params['dt']
+    npts = params['npts']
+    communicator = params['lasif_communicator']
     
     _copy_relevant_lasif_files(params)
     
@@ -674,9 +680,13 @@ def lasif_preprocess_data(params, first_job, last_job):
 
     # Change to the directory above this script, and submit the job.
     os.chdir(this_script)
-    subprocess.Popen(
-        ['sbatch', '--array=%s-%s' % (first_job, last_job), sbatch_file, 
-        lasif_scratch_path, lasif_project_path, iteration_name]).wait()
+    
+    for event in event_list[first_job:last_job+1]:
+        starttime = communicator.comm.events.get(event)['origin_time']
+        subprocess.Popen(
+            ['sbatch', sbatch_file, lasif_scratch_path, event, str(highpass_f), 
+            str(lowpass_f), str(starttime), str(dt), str(npts), 
+            lasif_project_path]).wait()
 
 def smooth_kernels(params, horizontal_smoothing, vertical_smoothing):
     """

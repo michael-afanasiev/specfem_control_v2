@@ -8,6 +8,8 @@ import xml.etree.ElementTree as ET
 
 import control
 
+from lasif.components import project
+
 FCT_PREFIX = "office_"
 
 
@@ -474,37 +476,46 @@ def _read_parameter_file():
         parameters['scratch_path'],
         os.path.basename(
             parameters['lasif_path']))
-
-    # Get list of all event names.
+    
+    # Initialize lasif project.
     try:
-        iteration_xml_path = os.path.join(
-            parameters['lasif_path'],
-            'ITERATIONS',
-            'ITERATION_%s.xml' %
-            (parameters['iteration_name']))
-        tree = ET.parse(iteration_xml_path)
+        master = project.Project(
+            parameters['lasif_path'], read_only_caches=True)
     except:
-        iteration_xml_path = os.path.join(
-            lasif_scratch_path,
-            'ITERATIONS',
-            'ITERATION_%s.xml' %
-            (parameters['iteration_name']))
-        tree = ET.parse(iteration_xml_path)        
-        
-    root = tree.getroot()
-    event_list = []
-    for name in root.findall('event'):
-        for event in name.findall('event_name'):
-            event_list.append(event.text)
+        try:
+            master = project.Project(
+                lasif_scratch_path, read_only_caches=True)
+        except:
+            sys.exit("Error opening lasif project.")
 
+    # Get event list.
+    event_list = sorted(
+        master.comm.iterations.get(parameters['iteration_name']).events.keys())
+
+    # Get processing params.
+    lowpass = master.comm.iterations.get(
+        parameters['iteration_name']).get_process_params()['lowpass']
+    highpass = master.comm.iterations.get(
+        parameters['iteration_name']).get_process_params()['highpass']
+    dt = master.comm.iterations.get(
+        parameters['iteration_name']).get_process_params()['dt']
+    npts = master.comm.iterations.get(
+        parameters['iteration_name']).get_process_params()['npts']
+
+    # Update master dictrionary.
     parameters.update({'forward_stage_dir': forward_stage_dir})
     parameters.update({'forward_run_dir': forward_run_dir})
-    parameters.update({'iteration_xml_path': iteration_xml_path})
-    parameters.update({'event_list': sorted(event_list)})
+    parameters.update({'event_list': event_list})
     parameters.update({'lasif_scratch_path': lasif_scratch_path})
-
+    parameters.update({'lasif_communicator': master})
+    parameters.update({'lowpass_f': lowpass})
+    parameters.update({'highpass_f': highpass})
+    parameters.update({'lowpass_p': 1/lowpass})
+    parameters.update({'highpass_p': 1/highpass})
+    parameters.update({'dt': dt})
+    parameters.update({'npts': npts})
+    
     return parameters
-
 
 def _get_cmd_description(fct):
     """

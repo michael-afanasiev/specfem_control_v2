@@ -7,8 +7,8 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=1
 #SBATCH --time=01:00:00
-#SBATCH --output=./sbatch_logs/preprocess_data.%A.%a.o
-#SBATCH --error=./sbatch_logs/preprocess_data.%A.%a.e
+#SBATCH --output=./sbatch_logs/preprocess_data.%A.o
+#SBATCH --error=./sbatch_logs/preprocess_data.%A.e
 
 export MV2_ENABLE_AFFINITY=0
 export KMP_AFFINITY=compact
@@ -20,45 +20,17 @@ if [ "$3" == "" ]; then
   exit
 fi
 
-lasif_scratch_dir=$1
-lasif_project_dir=$2
-iteration_name=$3
+lasif_scratch_dir=$1; event=$2; freqmin=$3; freqmax=$4; origin_time=$5
+dt=$6; npts=$7; lasif_project_dir=$8
 
-# Get all event names.
-cd $lasif_scratch_dir
-shopt -s nullglob
-array=($lasif_scratch_dir/EVENTS/*)
-my_event=${array[$SLURM_ARRAY_TASK_ID]}
-my_event=${my_event%.xml}
-my_event=${my_event##*/}
+# Copy project to scratch
+echo "Copying data..., $event"
+rsync -av $lasif_project_dir/DATA/$event/ $lasif_scratch_dir/DATA/$event
+echo "Done copying data..."
 
-# Copy data to scratch.
-rsync -av $lasif_project_dir/DATA/$my_event $lasif_scratch_dir/DATA/
-
-# Untar data.
-cd $lasif_scratch_dir/DATA/$my_event
-for dir in ./*; do
- if [ -d "$dir" ]; then
-   cd $dir
-   tar -xvf data.tar
-   rm -f data.tar
-   cd ../
- fi
-done
 
 # Run the code.
-aprun -B lasif preprocess_data $iteration_name $my_event --read_only_caches
-
-# Retar data.
-cd $lasif_scratch_dir/DATA/$my_event
-for dir in ./*; do
- if [ -d "$dir" ]; then
-   cd $dir
-   tar -cvf data.tar *.mseed
-   rm -f *.mseed
-   cd ../
- fi
-done
+aprun -B ./python_scripts/preprocess_data.py $lasif_scratch_dir $event $freqmin $freqmax $origin_time $dt $npts
 
 # Copy back to project.
-rsync -av $lasif_scratch_dir/DATA/$my_event/*preprocessed* $lasif_project_dir/DATA/$my_event
+rsync -av $lasif_scratch_dir/DATA/$event/*preprocessed* $lasif_project_dir/DATA/$event/

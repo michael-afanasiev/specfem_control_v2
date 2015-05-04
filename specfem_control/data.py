@@ -99,7 +99,6 @@ def download_data(params, station_list, with_waveforms, recording_time,
         
     # Set up paths and such.
     lasif_data_path = os.path.join(params['lasif_path'], 'DOWNLOADED_DATA')
-    iteration_xml_path = params['iteration_xml_path']
     event_xml_directory = os.path.join(params['lasif_path'], 'EVENTS')
     event_list = params['event_list']
     lasif_stations_path = os.path.join(params['lasif_path'], 'STATIONS', 
@@ -166,7 +165,7 @@ def prefilter_data(params):
     StationXML files exist, so make sure you've done this first.
     """
     # Local variables.
-    channel_priority = ['LH*', 'BH*']
+    channel_priority = ['BH*', 'LH*']
     lasif_path = params['lasif_path']
     lasif_data_path = os.path.join(params['lasif_path'], 'DOWNLOADED_DATA')
     event_xml_directory = os.path.join(params['lasif_path'], 'EVENTS')

@@ -54,6 +54,10 @@ master = project.Project('./', read_only_caches=True)
 # Get event list.
 event_list = sorted(master.comm.iterations.get(iteration).events.keys())
 
+print master.comm.iterations.get(iteration).get_process_params()
+print "HEP"
+sys.exit()
+
 # Farm out misfit evaluation to all cores.
 print "Running in parallel on %d cores." % (cpu_count())
 pool = Pool(processes=1)#cpu_count())
