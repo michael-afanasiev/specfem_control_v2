@@ -28,8 +28,9 @@ def plot_two(s1, s2, process_s1=False, process_s2=True, plot=True, ax=None,
     norm_data_s2 = s2.normalize()
     time_s2 = s2.t / 60.
 
-    norm_data_s3 = third.normalize()
-    time_s3 = third.t / 60.
+    if third:
+        norm_data_s3 = third.normalize()
+        time_s3 = third.t / 60.
                 
     ymax = max(np.amax(np.absolute(norm_data_s1)), 
                np.amax(np.absolute(norm_data_s2))) * (1.2)
@@ -37,17 +38,21 @@ def plot_two(s1, s2, process_s1=False, process_s2=True, plot=True, ax=None,
                np.amax(np.absolute(norm_data_s2))) * (-1.2)            
         
     
-    # ax.set_xlabel('Time (m)')
-    # ax.set_ylabel('Amplitude (normalized)')
+    print s1.fname
+    print s2.fname
+    
     if ax == None:
         ax = plt.gca()
-    ax.set_xlim(29, 35)# max(time_s1))
+        ax.set_xlabel('Time (m)')
+        ax.set_ylabel('Amplitude (normalized)')
+    ax.set_xlim(0, max(time_s1))
     ax.set_ylim(ymin, ymax)
     
     # Plot datas.
     ax.plot(time_s1, norm_data_s1, 'k', label='Data')#s1.fname)
     ax.plot(time_s2, norm_data_s2, 'r', label='00_globe')#s2.fname)
-    ax.plot(time_s3, norm_data_s3, 'b', linestyle='-', label='02_globe')#third.fname)
+    if third:
+        ax.plot(time_s3, norm_data_s3, 'b', linestyle='-', label='02_globe')#third.fname)
 
     legend = True
     if legend:    
@@ -55,13 +60,13 @@ def plot_two(s1, s2, process_s1=False, process_s2=True, plot=True, ax=None,
 
     if plot:
         plt.show()
-        plt.savefig('seismogram_00_globe.png')
+        #plt.savefig('seismogram_00_globe.png')
         
     
     
 class Seismogram(object):
 
-    def __init__(self, file_name):
+    def __init__(self, file_name, net=None, sta=None, cmp=None):
 
         if file_name.endswith('.ascii'):
             # Read in seismogram.
@@ -83,9 +88,17 @@ class Seismogram(object):
             if self.tr.stats.channel == 'X':
                 self.data = self.data * (-1)
                 
-        elif file_name.endswith('.mseed') or file_name.endswith('.sac'):            
-            self.tr = obspy.read(file_name)[0]
-            self.fname = file_name
+        elif file_name.endswith('.mseed') or file_name.endswith('.sac'):
+            if not net and not sta and not cmp:        
+                self.tr = obspy.read(file_name)[0]
+            else:
+                st = obspy.read(file_name)
+                print st.__str__(extended=True)
+                for self.tr in st:
+                    if sta in self.tr.stats.station and net in self.tr.stats.network and \
+                        cmp in self.tr.stats.channel:
+                        break
+            self.fname = "%s.%s.%s" % (self.tr.stats.network, self.tr.stats.station, self.tr.stats.channel)
             self.t = np.array(
                 [x*self.tr.stats.delta for x in range(0, self.tr.stats.npts)])
         else:

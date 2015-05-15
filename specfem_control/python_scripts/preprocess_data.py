@@ -71,6 +71,9 @@ processed_st = obspy.Stream()
 
 for tr in st:
 
+    print "Processing: \n"
+    print tr
+
     # Trim with a short buffer in an attempt to avoid boundary effects.
     # starttime is the origin time of the event
     # endtime is the origin time plus the length of the synthetics
@@ -80,12 +83,12 @@ for tr in st:
     # Non-zero length
     if not len(tr):
         msg = "No data found in time window around the event. File skipped."
-        raise LASIFError(msg)
+        continue
 
     # No nans or infinity values allowed.
     if not np.isfinite(tr.data).all():
         msg = "Data contains NaNs or Infs. File skipped"
-        raise LASIFError(msg)
+        continue
 
     # =========================================================================
     # Step 1: Decimation

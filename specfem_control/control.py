@@ -1,11 +1,14 @@
 #!/usr/bin/env python
 
 import os
+import sys
 import utils
 import shutil
 import subprocess
 import tarfile
 import random
+import obspy
+import math
 
 import data
 import seismograms
@@ -39,6 +42,26 @@ def _copy_files_and_tar(xxx_todo_changeme):
     else:
         utils.move_directory(source, dest, ends='.sac')
 
+def _copy_synthetics((source, dest, iteration)):
+    
+    utils.print_ylw("Moving: " + source.split('/')[-2])
+    
+    dest_name = os.path.join(dest, 'data.mseed')
+
+    if os.path.exists(dest_name):
+        os.remove(dest_name)
+
+    utils.mkdir_p(dest)
+    
+    st = obspy.Stream()
+    source_files = [x for x in os.listdir(source) if x.endswith('.sac')]
+    for file in source_files:
+        
+        seismo = os.path.join(source, file)
+        st += obspy.read(seismo)
+        
+    st = data.process_synthetics(st, iteration)
+    st.write(dest_name, format='mseed')
 
 def _tar_seismograms(dir):
 
@@ -85,9 +108,11 @@ def _copy_input_files(event, forward_run_dir, lasif_path, iteration_name,
     compile_data = os.path.join(specfem_root, 'DATA')
     mesh_data = os.path.join(forward_run_dir, 'mesh', 'DATA')
     event_data = os.path.join(forward_run_dir, event, 'DATA')
-    lasif_output = os.path.join(lasif_path, 'OUTPUT')
+    lasif_output = os.path.join(
+        lasif_path, 'OUTPUT', 'INPUT_ITERATION_%s' % (iteration_name))
+
     for dir in os.listdir(lasif_output):
-        if iteration_name in dir and event in dir and 'input_files' in dir:
+        if event in dir:
             source = os.path.join(lasif_output, dir)
             utils.copy_directory(source, event_data, exc=['Par_file', 'STF'])
             # This flag also copies the first event's data to the solver base
@@ -249,6 +274,131 @@ def get_quadratic_steplength(p1, m1, p2, m2, p3, m3):
     plt.xlim(minplot, maxplot)
     plt.show()
 
+
+def generate_input_files(params):
+    """
+    Generates a set of input files for use with SPECFEM for an iteration.
+    """
+    communicator = params['lasif_communicator']
+    iteration_name = params['iteration_name']
+    event_list = params['event_list']
+    highpass_p = params['highpass_p']
+    lasif_path = params['lasif_path']
+    lowpass_p = params['lowpass_p']    
+    
+    # StationXML directory.
+    station_dir = os.path.join(lasif_path, 'STATIONS', 'StationXML')
+    
+    for event in event_list:
+        
+        utils.print_ylw("Writing for %s..." % (event))
+        
+        # Event info.        
+        start_time = communicator.comm.events.get(event)['origin_time'] 
+        longitude = communicator.comm.events.get(event)['longitude']
+        latitude = communicator.comm.events.get(event)['latitude']
+        depth = communicator.comm.events.get(event)['depth_in_km']
+        mag = communicator.comm.events.get(event)['magnitude']
+        mrr = communicator.comm.events.get(event)['m_rr'] * 1e7
+        mtt = communicator.comm.events.get(event)['m_tt'] * 1e7
+        mpp = communicator.comm.events.get(event)['m_pp'] * 1e7
+        mrt = communicator.comm.events.get(event)['m_rt'] * 1e7
+        mrp = communicator.comm.events.get(event)['m_rp'] * 1e7
+        mtp = communicator.comm.events.get(event)['m_tp'] * 1e7
+        
+        # Paths.
+        data_path = os.path.join(
+            lasif_path, 'DATA', event, 'preprocessed_%.1f_%.1f' % 
+                (lowpass_p, highpass_p), 'data.mseed')
+        output_path = os.path.join(
+            lasif_path, 'OUTPUT', 'INPUT_ITERATION_%s' % (iteration_name), 
+            event)
+        utils.mkdir_p(output_path)
+        
+        # Read in stream.
+        st = obspy.read(data_path)
+        
+        # Find each existing trace.
+        net, sta, chn, loc = [], [], [], []
+        for tr in st:
+            
+            n = tr.stats.network 
+            s = tr.stats.station 
+            c = tr.stats.channel 
+            l = tr.stats.location
+            
+            # Skip duplicated station/network names.
+            if n in net and s in sta:
+                continue
+                
+            net.append(n)
+            sta.append(s)
+            chn.append(c)
+            loc.append(l)
+                
+        # Open relevant StationXML files.
+        coords = []
+        for n, s, c, l in zip(net, sta, chn, loc):
+            
+            # Get inventory.
+            inv = obspy.read_inventory(os.path.join(
+                station_dir, 'station.%s_%s.xml' % (n, s)), format='stationxml')
+            
+            # Get coordinates for time and channel.    
+            coords.append(inv.get_coordinates(
+                '%s.%s.%s.%s' % (n, s, l, c), datetime=start_time))
+                
+        # Write everything.
+        with open(os.path.join(output_path, 'STATIONS'), 'w') as file:
+            for s, n, c in zip(sta, net, coords):
+                file.write(
+                    '%-6s %-6s %-8.3f %-8.3f %-8.1f %-8.1f\n' 
+                    % (s, n, c['latitude'], 
+                    c['longitude'], c['elevation'], c['local_depth']))
+
+        # The template for the CMTSOLUTION file.
+        CMT_SOLUTION_template = (
+            "PDE {time_year} {time_month} {time_day} {time_hh} {time_mm} "
+            "{time_ss:.2f} {event_latitude:.5f} {event_longitude:.5f} "
+            "{event_depth:.5f} {event_mag:.1f} {event_mag:.1f} {event_name}\n"
+            "event name:          00000\n"
+            "time shift:     {time_shift:10.5f}\n"
+            "half duration:  {half_duration:10.5f}\n"
+            "latitude:       {event_latitude:10.5f}\n"
+            "longitude:      {event_longitude:10.5f}\n"
+            "depth:          {event_depth: 10.5f}\n"
+            "Mrr:            {mrr:10.6g}\n"
+            "Mtt:            {mtt:10.6g}\n"
+            "Mpp:            {mpp:10.6g}\n"
+            "Mrt:            {mrt:10.6g}\n"
+            "Mrp:            {mrp:10.6g}\n"
+            "Mtp:            {mtp:10.6g}\n"
+            )
+            
+        CMT_FILE = CMT_SOLUTION_template.format(
+            time_year = start_time.year,
+            time_month = start_time.month,
+            time_day = start_time.day,
+            time_hh = start_time.hour,
+            time_mm = start_time.minute,
+            time_ss = start_time.second + start_time.microsecond / 1e6,
+            event_mag = mag,
+            event_name = str(start_time) + '_' + ('%1.f' % (mag)),
+            event_latitude = float(latitude),
+            event_longitude = float(longitude),
+            event_depth = float(depth),
+            half_duration = 0.0,
+            time_shift = 0.0,
+            mtt=mtt,
+            mrr=mrr,
+            mpp=mpp,
+            mtp=mtp,
+            mrt=mrt,
+            mrp=mrp
+        )
+        
+        with open(os.path.join(output_path, 'CMTSOLUTION'), 'w') as file:
+            file.write(CMT_FILE)
 
 def calculate_cumulative_misfit(params):
     """
@@ -668,11 +818,12 @@ def lasif_preprocess_data(params, first_job, last_job):
     """
     lasif_scratch_path = params['lasif_scratch_path']
     lasif_project_path = params['lasif_path']
-    lowpass_f = params['lowpass_f']
     highpass_f = params['highpass_f']
     event_list = params['event_list']
-    dt = params['dt']
+    lowpass_f = params['lowpass_f']
     npts = params['npts']
+    dt = params['dt']
+
     communicator = params['lasif_communicator']
 
     _copy_relevant_lasif_files(params)
@@ -993,7 +1144,8 @@ def process_synthetics(params, first_job, last_job):
     chosen_event = event_list[first_job:last_job + 1]
     source_dirs = [os.path.join(forward_run_dir, event, 'OUTPUT_FILES')
                    for event in chosen_event]
-    dest_dirs = [os.path.join(
+    iteration = params['lasif_communicator'].comm.iterations.get(iteration_name)
+    dest_dirs = [os.path.join(    
         lasif_path, 'SYNTHETICS', event, 'ITERATION_%s' % (iteration_name))
         for event in chosen_event]
     dest_dirs_scratch = [
@@ -1007,10 +1159,8 @@ def process_synthetics(params, first_job, last_job):
     if __name__ == 'specfem_control.control':
         pool = Pool(processes=cpu_count())
         print "Using %d cpus..." % (cpu_count())
-        #pool.map(_copy_files_and_tar, zip(source_dirs, dest_dirs, repeat(True)))
-        pool.map(
-            _copy_files_and_tar, zip(
-                source_dirs, dest_dirs_scratch, repeat(False)))
+        for s, d, i in zip(source_dirs, dest_dirs, repeat(iteration)):
+            _copy_synthetics((s, d, i))
 
     utils.print_blu('Done.')
 
@@ -1049,13 +1199,13 @@ def plot_seismogram(params, file_name):
 
 
 def plot_two_seismograms(
-        params, file_1, file_2, process_s1=False, process_s2=True, ax=None,
-        plot=True, legend=True, third=None):
+        params, file_1, file_2, process_s1=False, process_s2=False, ax=None,
+        plot=True, legend=True, third=None, net='XB', sta='PS46', cmp='Z'):
     """
     Plots two sesimograms on top of each other.
     """
-    s1 = seismograms.Seismogram(file_1)
-    s2 = seismograms.Seismogram(file_2)
+    s1 = seismograms.Seismogram(file_1, net=net, sta=sta, cmp=cmp)
+    s2 = seismograms.Seismogram(file_2, net=net, sta=sta, cmp=cmp)
     s3 = None
     if third:
         s3 = seismograms.Seismogram(third)

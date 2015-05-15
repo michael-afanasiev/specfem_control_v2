@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import math
 import obspy
 import utils
 import obspy
@@ -8,12 +9,14 @@ import timeit
 import tarfile
 import subprocess
 
+import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
 from itertools import repeat
 from obspy.fdsn import Client
 from obspy.signal.rotate import rotate2ZNE
+from obspy.signal.invsim import c_sac_taper
 from multiprocessing import Pool, cpu_count
 from collections import namedtuple
 
@@ -145,16 +148,16 @@ def download_data(params, station_list, with_waveforms, recording_time,
 
     # Get stations.
     c = Client("IRIS")
-    for x in stations_filt:        
+    for sta, net in zip(stations, networks): 
         station_filename = os.path.join(
-            lasif_stations_path, 'station.%s_%s.xml' % (x.network, x.station))            
+            lasif_stations_path, 'station.%s_%s.xml' % (net, sta))            
         if os.path.exists(station_filename):
             continue        
         utils.print_ylw(
-            "Downloading StationXML for: %s.%s" % (x.network, x.station))
+            "Downloading StationXML for: %s.%s" % (net, sta))
         try:
             c.get_stations(
-                network=x.network, station=x.station, location="*", channel="*",
+                network=net, station=sta, location="*", channel="*",
                 level="response", filename=station_filename)
         except:
             utils.print_red("No data for %s" % (station_filename))
@@ -169,8 +172,6 @@ def prefilter_data(params):
     lasif_path = params['lasif_path']
     lasif_data_path = os.path.join(params['lasif_path'], 'DOWNLOADED_DATA')
     event_xml_directory = os.path.join(params['lasif_path'], 'EVENTS')
-    lasif_stations_path = os.path.join(
-        params['lasif_path'], 'STATIONS', 'StationXML')
         
     # Get starttime for event.
     for event in sorted(os.listdir(event_xml_directory)):
@@ -195,3 +196,77 @@ def prefilter_data(params):
 
         write_filename = os.path.join(lasif_raw_data_path, 'data.mseed')
         st_filt.write(filename=write_filename, format='mseed')
+        
+def convolve_stf(tr):
+    """
+    Convolves with a gaussian source time function, with a given
+    half_duration. Does this in place. Takes a cmtsolution object as a
+    parameter.
+    """
+    half_duration = 10.0
+    source_decay_mimic_triangle = 1.6280
+    alpha = source_decay_mimic_triangle / half_duration
+    n_convolve = int(math.ceil(2.5 * half_duration /
+                               tr.stats.delta))
+    g_x = np.zeros(2 * n_convolve + 1)
+
+    for i, j in enumerate(range(-n_convolve, n_convolve + 1)):
+        tau = j * tr.stats.delta
+        exponent = alpha * alpha * tau * tau
+        source = alpha * math.exp(-exponent) / \
+            math.sqrt(math.pi)
+
+        g_x[i] = source * tr.stats.delta
+
+    return np.convolve(tr.data, g_x, 'same')
+
+def process_synthetics(st, iteration):
+
+    # Filtering frequenceis.
+    lowpass_freq = iteration.get_process_params()['lowpass']
+    highpass_freq = iteration.get_process_params()['highpass']
+    
+    print lowpass_freq, highpass_freq
+    
+    freqmin=highpass_freq
+    freqmax=lowpass_freq
+
+    f2 = highpass_freq
+    f3 = lowpass_freq
+    f1 = 0.8 * f2
+    f4 = 1.2 * f3
+    pre_filt = (f1, f2, f3, f4)
+        
+    # Detrend and taper.
+    st.detrend("linear")
+    st.detrend("demean")
+    st.taper(max_percentage=0.05, type="hann")
+
+    # Perform a frequency domain taper like during the response removal
+    # just without an actual response...
+    for tr in st:
+        
+        tr.data = convolve_stf(tr)
+        
+        tr.differentiate()
+        
+        data = tr.data.astype(np.float64)
+        orig_len = len(data)
+
+        # smart calculation of nfft dodging large primes
+        from obspy.signal.util import _npts2nfft
+        nfft = _npts2nfft(len(data))
+
+        fy = 1.0 / (tr.stats.delta * 2.0)
+        freqs = np.linspace(0, fy, nfft // 2 + 1)
+
+        # Transform data to Frequency domain
+        data = np.fft.rfft(data, n=nfft)
+        data *= c_sac_taper(freqs, flimit=pre_filt)
+        data[-1] = abs(data[-1]) + 0.0j
+        # transform data back into the time domain
+        data = np.fft.irfft(data)[0:orig_len]
+        # assign processed data and store processing information
+        tr.data = data
+    
+    return st

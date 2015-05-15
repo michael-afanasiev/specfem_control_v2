@@ -39,6 +39,10 @@ def office_setup_solver(parser, args, params):
     parser.parse_known_args(args)
     control.setup_solver(params)
 
+@command_group("Setup")
+def office_generate_input_files(parser, args, params):
+    parser.parse_known_args(args)
+    control.generate_input_files(params)
 
 @command_group("Setup")
 def office_prepare_solver(parser, args, params):
@@ -503,6 +507,9 @@ def _read_parameter_file():
     # Get event list.
     event_list = sorted(
         master.comm.iterations.get(parameters['iteration_name']).events.keys())
+
+    if not event_list:
+        sys.exit("Event list is empty. Are you sure the iteration was created properly?")
 
     # Get processing params.
     lowpass = master.comm.iterations.get(
