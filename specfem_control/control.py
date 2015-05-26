@@ -1,5 +1,4 @@
-#!/usr/bin/env python
-
+import pandas as pd
 import os
 import sys
 import utils
@@ -13,6 +12,7 @@ import math
 import data
 import seismograms
 
+import window_selection
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -216,7 +216,8 @@ def _copy_relevant_lasif_files(params):
          lasif_scratch_path], shell=True).wait()
 
     folders = ['CACHE', 'STATIONS', 'EVENTS', 'FUNCTIONS', 'ITERATIONS',
-               'OUTPUT', 'config.xml', 'LOGS', 'MODELS']
+               'OUTPUT', 'config.xml', 'LOGS', 'MODELS', 'DATA', 'SYNTHETICS',
+               'ADJOINT_SOURCES_AND_WINDOWS']
 
     for folder in folders:
         subprocess.Popen(['rsync', '-av', os.path.join(lasif_path, folder),
@@ -702,6 +703,89 @@ def plot_random_seismograms(params, num, two_iterations):
         print x, y
 
 
+def select_windows(params, first_job, last_job):
+    '''
+    Selects the windows using LION KRISCHER's window selection script.
+    '''
+
+    communicator = params['lasif_communicator']
+    event_list = params['event_list']
+    iteration_name = params['iteration_name']
+    highpass_p = params['highpass_p']
+    lasif_path = params['lasif_scratch_path']
+    lowpass_p = params['lowpass_p']   
+
+    event_list = event_list[first_job:last_job+1]
+
+    try:
+        _copy_relevant_lasif_files(params)
+    except:
+        utils.print_red("LOOK OUT! HAVE YOU RUN COPY LASIF FILES?????")
+
+    for event in event_list:
+        
+        data_name = os.path.join(
+            lasif_path, 'DATA', event, 
+            'preprocessed_%.1f_%.1f' % (lowpass_p, highpass_p), 'data.mseed')
+
+        if not os.path.exists(data_name):
+            utils.print_red("DATA FILE DOES NOT EXIST")
+            continue
+
+        # Read data file
+        data = obspy.read(data_name)
+
+        syn_name = os.path.join(
+            lasif_path, 'SYNTHETICS', event, 
+            'ITERATION_%s' % (iteration_name), 'data.mseed')
+
+        if not os.path.exists(syn_name):
+            utils.print_red("SYN FILE DOES NOT EXIST FOR %s" % (event))
+            continue
+
+        # Read synthetic file.
+        syn = obspy.read(syn_name)
+
+        # Get event information.
+        e_lat = communicator.comm.events.get(event)['latitude']
+        e_lon = communicator.comm.events.get(event)['longitude']
+        e_dep = communicator.comm.events.get(event)['depth_in_km']
+
+        # Get station info.
+        input_file = os.path.join(
+            lasif_path, 'OUTPUT', 
+            'INPUT_ITERATION_%s' % (iteration_name), event, 'STATIONS')
+        stat_info = pd.read_csv(
+            input_file, header=None, 
+            names=['sta', 'net', 'lat', 'lon', 'elv', 'dep'], sep='\s+')
+
+        for syn_trace in syn:
+            
+            syn_sta = syn_trace.stats.station
+            syn_chn = syn_trace.stats.channel[-1]
+            syn_net = syn_trace.stats.network
+
+            dat_trace = data.select(
+                channel='BH%s' % (syn_chn), network=syn_net, station=syn_sta)[0]
+
+            sta_lon = stat_info[stat_info['sta'] == syn_sta].squeeze()['lon']
+            sta_lat = stat_info[stat_info['sta'] == syn_sta].squeeze()['lat']
+
+            window_path = os.path.join(
+                lasif_path, 'ADJOINT_SOURCES_AND_WINDOWS', 'WINDOWS', 
+                iteration_name, event, 
+                '%s.%s.BH%s.xml' % (syn_net, syn_sta, syn_chn))
+                
+            windows = window_selection.select_windows(
+                dat_trace, syn_trace, e_lat, e_lon, e_dep, sta_lat, sta_lon, 
+                lowpass_p, highpass_p)
+                
+            window_selection.write(
+                windows, window_path, event, 
+                '%s.%s.BH%s' % (syn_net, syn_sta, syn_chn), iteration_name)
+          
+
+
 def submit_window_selection(params, first_job, last_job):
     """
     Submits the window selection job for jobs first_job to last_job.
@@ -719,9 +803,8 @@ def submit_window_selection(params, first_job, last_job):
 
     # Change to the directory above this script, and submit the job.
     os.chdir(this_script)
-    subprocess.Popen(['sbatch', '--array=%s-%s' % (first_job, last_job),
-                      sbatch_file, lasif_scratch_dir,
-                      lasif_project_dir, iteration_name]).wait()
+    for x in range(first_job, last_job+1):
+        subprocess.Popen(['sbatch', sbatch_file, str(x), str(x)]).wait()
 
 
 def distribute_adjoint_sources(params):
@@ -1198,9 +1281,11 @@ def plot_seismogram(params, file_name):
     seismogram.plot_seismogram()
 
 
+
 def plot_two_seismograms(
         params, file_1, file_2, process_s1=False, process_s2=False, ax=None,
-        plot=True, legend=True, third=None, net='XB', sta='PS46', cmp='Z'):
+        plot=True, legend=True, third=None, net='AF', sta='KUKU', cmp='Z',
+        window=None):
     """
     Plots two sesimograms on top of each other.
     """
@@ -1210,4 +1295,5 @@ def plot_two_seismograms(
     if third:
         s3 = seismograms.Seismogram(third)
     seismograms.plot_two(s1, s2, process_s1=process_s1, process_s2=process_s2,
-                         ax=ax, plot=plot, legend=legend, third=s3)
+                         ax=ax, plot=plot, legend=legend, third=s3, window=window)
+

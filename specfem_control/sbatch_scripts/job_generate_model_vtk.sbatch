@@ -8,7 +8,7 @@
 #SBATCH --ntasks=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=1
-#SBATCH --time=00:05:00
+#SBATCH --time=01:00:00
 #SBATCH --output=./sbatch_logs/job_vtk.o
 #SBATCH --error=./sbatch_logs/job_vtk.e
 

@@ -8,12 +8,14 @@ import obspy
 import numpy as np
 import matplotlib.pyplot as plt
 
+from lxml import etree
+
 class SeismogramNotFoundError(Exception):
     pass
 
 
 def plot_two(s1, s2, process_s1=False, process_s2=True, plot=True, ax=None,
-             legend=True, xlabel=None, ylabel=None, third=None):
+             legend=True, xlabel=None, ylabel=None, third=None, window=None):
     
     if process_s1:
         s1.process_synthetics()
@@ -40,6 +42,8 @@ def plot_two(s1, s2, process_s1=False, process_s2=True, plot=True, ax=None,
     
     print s1.fname
     print s2.fname
+
+    print s1.tr.stats.starttime
     
     if ax == None:
         ax = plt.gca()
@@ -48,11 +52,29 @@ def plot_two(s1, s2, process_s1=False, process_s2=True, plot=True, ax=None,
     ax.set_xlim(0, max(time_s1))
     ax.set_ylim(ymin, ymax)
     
+    if window:
+        windows = []
+        root = etree.parse(window).getroot()
+        for element in root:
+            if element.tag == 'Window':
+                w = {}
+                for elem in element:
+                    if elem.tag == 'Starttime':
+                        w['starttime'] = (obspy.UTCDateTime(elem.text) - s1.tr.stats.starttime) / 60.
+                    if elem.tag == 'Endtime':
+                        w['endtime'] = (obspy.UTCDateTime(elem.text) - s1.tr.stats.starttime) / 60.
+                        
+                windows.append(w)
+    
     # Plot datas.
     ax.plot(time_s1, norm_data_s1, 'k', label='Data')#s1.fname)
     ax.plot(time_s2, norm_data_s2, 'r', label='00_globe')#s2.fname)
     if third:
         ax.plot(time_s3, norm_data_s3, 'b', linestyle='-', label='02_globe')#third.fname)
+    if window:
+        for w in windows:
+            ax.axvline(x=w['starttime'])
+            ax.axvline(x=w['endtime'])
 
     legend = True
     if legend:    
@@ -60,7 +82,7 @@ def plot_two(s1, s2, process_s1=False, process_s2=True, plot=True, ax=None,
 
     if plot:
         plt.show()
-        #plt.savefig('seismogram_00_globe.png')
+        plt.savefig('seismogram_00_globe.png')
         
     
     
@@ -97,6 +119,7 @@ class Seismogram(object):
                 for self.tr in st:
                     if sta in self.tr.stats.station and net in self.tr.stats.network and \
                         cmp in self.tr.stats.channel:
+                        print sta
                         break
             self.fname = "%s.%s.%s" % (self.tr.stats.network, self.tr.stats.station, self.tr.stats.channel)
             self.t = np.array(

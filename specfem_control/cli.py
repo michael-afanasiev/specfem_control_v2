@@ -11,7 +11,6 @@ from lasif.components import project
 
 FCT_PREFIX = "office_"
 
-
 class FileNotFoundError(Exception):
     pass
 
@@ -312,11 +311,15 @@ def office_plot_two_seismograms(parser, args, params):
     parser.add_argument('--file_2', type=str,
                         help='File name',
                         metavar='', required=True)
+    parser.add_argument('--window', type=str,
+                        help='Path to window file.',
+                        metavar='', required=False)
     local_args = parser.parse_known_args(args)
     file_1 = local_args[0].file_1
     file_2 = local_args[0].file_2
 
-    control.plot_two_seismograms(params, file_1, file_2)
+    control.plot_two_seismograms(params, file_1, file_2, 
+        window=local_args[0].window)
 
 
 @command_group("Data")
@@ -422,6 +425,25 @@ def office_download_data(parser, args, params):
     recording_time = local_args[0].recording_time
     control.download_data(params, station_list, with_waveforms, recording_time,
                           padding_time)
+
+
+@command_group("Data")
+def office_select_windows(parser, args, params):
+    """
+    Uses LASIF to select windows.
+    """
+    parser.add_argument('-fj', type=int, help='First event to submit.',
+                        metavar='', required=True)
+    parser.add_argument('-lj', type=int, help='Last event to submit.',
+                        metavar='', required=True)
+
+    print "PAST PARSER\n"
+    local_args = parser.parse_known_args(args)
+    first_job = local_args[0].fj
+    last_job = local_args[0].lj
+    print "REALLY PAST PARSER"
+  
+    control.select_windows(params, first_job, last_job)
 
 
 @command_group("Data")
